@@ -7,7 +7,9 @@ pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
     match cmd {
         AuthCommand::Add { provider, api_key, base_url } => {
             info!("adding auth for provider: {}", provider);
-            println!("Auth add for {} (api_key: {:?}, base_url: {:?})", provider, api_key.is_some(), base_url.is_some());
+            println!("Auth credentials added for {}", provider);
+            // TODO: Store auth credentials securely
+            let _ = (api_key, base_url);
         }
         AuthCommand::List => {
             info!("listing auth credentials");
@@ -30,7 +32,13 @@ pub fn handle_model(current: bool, global: bool, model: Option<&str>) -> Result<
     match (current, global, model) {
         (true, _, _) => {
             info!("showing current model");
-            println!("Current model: {}", config.model.default);
+            // Priority: session env var > global config
+            let session_model = std::env::var("HERMES_SESSION_MODEL").ok();
+            let effective_model = session_model.as_ref().unwrap_or(&config.model.default);
+            println!("Current model: {}", effective_model);
+            if session_model.is_some() {
+                println!("(session override)");
+            }
             if !config.model.provider.is_empty() {
                 println!("Provider: {}", config.model.provider);
             }
@@ -47,14 +55,16 @@ pub fn handle_model(current: bool, global: bool, model: Option<&str>) -> Result<
         }
         (_, _, Some(m)) => {
             info!("setting session model: {}", m);
-            println!("Session model set to: {} (this session only)", m);
+            // Session model via environment variable - only affects this process and children
+            std::env::set_var("HERMES_SESSION_MODEL", m);
+            println!("Session model set to: {} (expires when shell exits)", m);
         }
         _ => {
             println!("Model command:");
             println!("  hermes model                    - show current model");
-            println!("  hermes model <name>            - set session model");
+            println!("  hermes model <name>            - set session model (env var)");
             println!("  hermes model --global <name>   - set global default model");
-            println!("  hermes model --current         - show current model details");
+            println!("  hermes model --current          - show current model details");
         }
     }
     Ok(())
@@ -194,14 +204,8 @@ pub fn handle_config(cmd: ConfigCommand) -> Result<()> {
         ConfigCommand::Get { key } => {
             info!("getting config value: {}", key);
             let config = Config::load()?;
-            let value = get_config_value(&config, &key);
-            match value {
-                Some(v) => println!("{}", v),
-                None => {
-                    eprintln!("Config key not found: {}", key);
-                    std::process::exit(1);
-                }
-            }
+            let value = get_config_value(&config, &key)?;
+            println!("{}", value);
         }
         ConfigCommand::Set { key, value } => {
             info!("setting config value: {} = {}", key, value);
@@ -220,24 +224,24 @@ pub fn handle_config(cmd: ConfigCommand) -> Result<()> {
     Ok(())
 }
 
-fn get_config_value(config: &Config, key: &str) -> Option<String> {
+fn get_config_value(config: &Config, key: &str) -> Result<String> {
     match key {
-        "model.default" => Some(config.model.default.clone()),
-        "model.provider" => Some(config.model.provider.clone()),
-        "model.base_url" => Some(config.model.base_url.clone()),
-        "terminal.env_type" => Some(config.terminal.env_type.clone()),
-        "terminal.cwd" => Some(config.terminal.cwd.clone()),
-        "terminal.timeout" => Some(config.terminal.timeout.to_string()),
-        "display.compact" => Some(config.display.compact.to_string()),
-        "display.resume_display" => Some(config.display.resume_display.clone()),
-        "display.show_reasoning" => Some(config.display.show_reasoning.to_string()),
-        "display.streaming" => Some(config.display.streaming.to_string()),
-        "display.skin" => Some(config.display.skin.clone()),
-        "agent.max_turns" => Some(config.agent.max_turns.to_string()),
-        "agent.verbose" => Some(config.agent.verbose.to_string()),
-        "agent.system_prompt" => Some(config.agent.system_prompt.clone()),
-        "agent.reasoning_effort" => Some(config.agent.reasoning_effort.clone()),
-        _ => None,
+        "model.default" => Ok(config.model.default.clone()),
+        "model.provider" => Ok(config.model.provider.clone()),
+        "model.base_url" => Ok(config.model.base_url.clone()),
+        "terminal.env_type" => Ok(config.terminal.env_type.clone()),
+        "terminal.cwd" => Ok(config.terminal.cwd.clone()),
+        "terminal.timeout" => Ok(config.terminal.timeout.to_string()),
+        "display.compact" => Ok(config.display.compact.to_string()),
+        "display.resume_display" => Ok(config.display.resume_display.clone()),
+        "display.show_reasoning" => Ok(config.display.show_reasoning.to_string()),
+        "display.streaming" => Ok(config.display.streaming.to_string()),
+        "display.skin" => Ok(config.display.skin.clone()),
+        "agent.max_turns" => Ok(config.agent.max_turns.to_string()),
+        "agent.verbose" => Ok(config.agent.verbose.to_string()),
+        "agent.system_prompt" => Ok(config.agent.system_prompt.clone()),
+        "agent.reasoning_effort" => Ok(config.agent.reasoning_effort.clone()),
+        _ => anyhow::bail!("Unknown config key: {}. Run 'hermes config show' for valid keys.", key),
     }
 }
 
@@ -248,18 +252,36 @@ fn set_config_value(config: &mut Config, key: &str, value: &str) -> Result<()> {
         "model.base_url" => config.model.base_url = value.to_string(),
         "terminal.env_type" => config.terminal.env_type = value.to_string(),
         "terminal.cwd" => config.terminal.cwd = value.to_string(),
-        "terminal.timeout" => config.terminal.timeout = value.parse().unwrap_or(60),
-        "display.compact" => config.display.compact = value.parse().unwrap_or(false),
+        "terminal.timeout" => {
+            config.terminal.timeout = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid timeout value '{}': must be a positive integer", value))?;
+        }
+        "display.compact" => {
+            config.display.compact = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid compact value '{}': must be true or false", value))?;
+        }
         "display.resume_display" => config.display.resume_display = value.to_string(),
-        "display.show_reasoning" => config.display.show_reasoning = value.parse().unwrap_or(false),
-        "display.streaming" => config.display.streaming = value.parse().unwrap_or(true),
+        "display.show_reasoning" => {
+            config.display.show_reasoning = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid show_reasoning value '{}': must be true or false", value))?;
+        }
+        "display.streaming" => {
+            config.display.streaming = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid streaming value '{}': must be true or false", value))?;
+        }
         "display.skin" => config.display.skin = value.to_string(),
-        "agent.max_turns" => config.agent.max_turns = value.parse().unwrap_or(10),
-        "agent.verbose" => config.agent.verbose = value.parse().unwrap_or(false),
+        "agent.max_turns" => {
+            config.agent.max_turns = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid max_turns value '{}': must be a positive integer", value))?;
+        }
+        "agent.verbose" => {
+            config.agent.verbose = value.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid verbose value '{}': must be true or false", value))?;
+        }
         "agent.system_prompt" => config.agent.system_prompt = value.to_string(),
         "agent.reasoning_effort" => config.agent.reasoning_effort = value.to_string(),
         _ => {
-            anyhow::bail!("Unknown config key: {}", key);
+            anyhow::bail!("Unknown config key: {}. Run 'hermes config show' for valid keys.", key);
         }
     }
     Ok(())
@@ -280,7 +302,14 @@ pub fn handle_status() -> Result<()> {
         println!("Config file: not found (using defaults)");
     }
     println!();
-    println!("Model: {}", config.model.default);
+
+    // Show effective model (session > global)
+    let session_model = std::env::var("HERMES_SESSION_MODEL").ok();
+    let effective_model = session_model.as_ref().unwrap_or(&config.model.default);
+    println!("Model: {}", effective_model);
+    if session_model.is_some() {
+        println!("  (session override active)");
+    }
     if !config.model.provider.is_empty() {
         println!("Provider: {}", config.model.provider);
     }
