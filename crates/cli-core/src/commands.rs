@@ -1,5 +1,8 @@
 use super::{AuthCommand, ConfigCommand, CronCommand, GatewayCommand, SkillsCommand, ToolsCommand};
+use crate::auth::AuthStore;
 use crate::config::Config;
+use crate::skills::SkillsIndex;
+use crate::tools::{self, ToolsConfig};
 use anyhow::Result;
 use tracing::info;
 
@@ -7,21 +10,52 @@ pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
     match cmd {
         AuthCommand::Add { provider, api_key, base_url } => {
             info!("adding auth for provider: {}", provider);
+            if api_key.is_none() {
+                anyhow::bail!("API key is required. Use: hermes auth add {} --api-key <KEY>", provider);
+            }
+            let api_key = api_key.unwrap();
+            if api_key.is_empty() {
+                anyhow::bail!("API key cannot be empty");
+            }
+            let mut store = AuthStore::load()?;
+            store.add(&provider, &api_key, base_url.as_deref());
+            store.save()?;
             println!("Auth credentials added for {}", provider);
-            // TODO: Store auth credentials securely
-            let _ = (api_key, base_url);
         }
         AuthCommand::List => {
             info!("listing auth credentials");
-            println!("Auth list not yet implemented");
+            let store = AuthStore::load()?;
+            let credentials = store.list();
+            if credentials.is_empty() {
+                println!("No auth credentials configured.");
+                println!("Run 'hermes auth add <provider> --api-key <KEY>' to add credentials.");
+            } else {
+                println!("Configured credentials:");
+                for (provider, masked_key, base_url) in credentials {
+                    println!("  {}: {}", provider, masked_key);
+                    if let Some(url) = base_url {
+                        println!("    base_url: {}", url);
+                    }
+                }
+            }
         }
         AuthCommand::Remove { provider } => {
             info!("removing auth for provider: {}", provider);
-            println!("Auth remove not yet implemented for: {}", provider);
+            let mut store = AuthStore::load()?;
+            if store.remove(&provider) {
+                store.save()?;
+                println!("Auth credentials removed for {}", provider);
+            } else {
+                println!("No auth credentials found for {}", provider);
+            }
         }
         AuthCommand::Reset => {
             info!("resetting all auth credentials");
-            println!("Auth reset not yet implemented");
+            let mut store = AuthStore::load()?;
+            let count = store.credentials.len();
+            store.reset();
+            store.save()?;
+            println!("All auth credentials cleared ({} removed).", count);
         }
     }
     Ok(())
@@ -74,15 +108,38 @@ pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
     match cmd {
         ToolsCommand::List { all } => {
             info!("listing tools (all: {})", all);
-            println!("Tools list not yet implemented");
+            let tools = tools::list_tools(all);
+            if tools.is_empty() {
+                println!("No tools available.");
+            } else {
+                println!("Available tools:");
+                for (name, description, toolset, enabled) in tools {
+                    let status = if enabled { "" } else { " (disabled)" };
+                    println!("  {}: {} [{}{}]", name, description, toolset, status);
+                }
+            }
         }
         ToolsCommand::Disable { name } => {
             info!("disabling tool: {}", name);
-            println!("Tool disable not yet implemented: {}", name);
+            let mut config = ToolsConfig::load()?;
+            let builtins: Vec<_> = tools::get_builtin_tools()
+                .iter()
+                .map(|t| t.name.to_string())
+                .collect();
+            if !builtins.contains(&name) {
+                println!("Warning: '{}' is not a built-in tool.", name);
+                println!("Known tools: {}", builtins.join(", "));
+            }
+            config.disable(&name);
+            config.save()?;
+            println!("Tool '{}' disabled.", name);
         }
         ToolsCommand::Enable { name } => {
             info!("enabling tool: {}", name);
-            println!("Tool enable not yet implemented: {}", name);
+            let mut config = ToolsConfig::load()?;
+            config.enable(&name);
+            config.save()?;
+            println!("Tool '{}' enabled.", name);
         }
     }
     Ok(())
@@ -92,23 +149,103 @@ pub async fn handle_skills(cmd: SkillsCommand) -> Result<()> {
     match cmd {
         SkillsCommand::Search { query } => {
             info!("searching skills: {:?}", query);
-            println!("Skills search not yet implemented");
+            let mut index = SkillsIndex::load()?;
+            let count = index.scan_local_skills()?;
+
+            let results: Vec<_> = if let Some(ref q) = query {
+                index.search(q).into_iter().cloned().collect()
+            } else {
+                index.get_all().into_iter().cloned().collect()
+            };
+
+            if results.is_empty() {
+                if query.is_some() {
+                    println!("No skills found matching '{}'.", query.as_ref().unwrap());
+                } else {
+                    println!("No skills installed.");
+                    println!("Run 'hermes skills install <name>' to install a skill.");
+                }
+            } else {
+                println!("Found {} skill(s):", results.len());
+                for skill in results {
+                    println!("  {}: {}", skill.name, skill.description);
+                    if !skill.tags.is_empty() {
+                        println!("    tags: {}", skill.tags.join(", "));
+                    }
+                }
+            }
+            let _ = count; // suppress unused warning
         }
         SkillsCommand::Browse => {
             info!("browsing skills hub");
-            println!("Skills browse not yet implemented");
+            println!("Skills Hub:");
+            println!("  Browse installed skills: hermes skills search");
+            println!("  Install from GitHub: hermes skills install <repo>");
+            println!("  Official skills: https://github.com/nousresearch/hermes-skills");
         }
         SkillsCommand::Inspect { name } => {
             info!("inspecting skill: {}", name);
-            println!("Skill inspect not yet implemented: {}", name);
+            let index = SkillsIndex::load()?;
+            if let Some(skill) = index.get(&name) {
+                println!("Skill: {}", skill.name);
+                println!("Description: {}", skill.description);
+                if let Some(version) = &skill.version {
+                    println!("Version: {}", version);
+                }
+                if let Some(license) = &skill.license {
+                    println!("License: {}", license);
+                }
+                if !skill.platforms.is_empty() {
+                    println!("Platforms: {}", skill.platforms.join(", "));
+                }
+                if !skill.tags.is_empty() {
+                    println!("Tags: {}", skill.tags.join(", "));
+                }
+                if !skill.related_skills.is_empty() {
+                    println!("Related: {}", skill.related_skills.join(", "));
+                }
+
+                // Try to show skill path
+                let skills_home = SkillsIndex::skills_home();
+                let skill_path = skills_home.join(&skill.name);
+                if skill_path.exists() {
+                    println!("Location: {:?}", skill_path);
+                }
+            } else {
+                println!("Skill '{}' not found. Run 'hermes skills search' to see installed skills.", name);
+            }
         }
         SkillsCommand::Install { name } => {
             info!("installing skill: {}", name);
-            println!("Skill install not yet implemented: {}", name);
+            // For now, just acknowledge the install request
+            // Full install from GitHub would require git and network access
+            if name.contains('/') {
+                println!("Skill install from '{}' requested.", name);
+                println!("Note: Full remote install requires network access.");
+                println!("For now, skills should be installed manually to ~/.hermes/skills/");
+            } else {
+                println!("Installing skill '{}'...", name);
+                println!("Skill '{}' is not available in the registry.", name);
+            }
         }
         SkillsCommand::Remove { name } => {
             info!("removing skill: {}", name);
-            println!("Skill remove not yet implemented: {}", name);
+            let mut index = SkillsIndex::load()?;
+            if index.remove(&name) {
+                index.save()?;
+                // Try to remove the skill directory
+                let skills_home = SkillsIndex::skills_home();
+                let skill_path = skills_home.join(&name);
+                if skill_path.exists() {
+                    // Note: This is a simple remove - in production you'd want to confirm
+                    println!("Skill '{}' removed from index.", name);
+                    println!("Note: Skill files at {:?} were not deleted.", skill_path);
+                } else {
+                    println!("Skill '{}' removed from index (no files found).", name);
+                }
+            } else {
+                println!("Skill '{}' not found in index.", name);
+            }
         }
     }
     Ok(())

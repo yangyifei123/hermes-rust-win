@@ -5,9 +5,12 @@ use clap::Parser;
 use std::path::PathBuf;
 use tracing::info;
 
+pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod skills;
+pub mod tools;
 
 pub use config::Config;
 pub use error::CliError;
