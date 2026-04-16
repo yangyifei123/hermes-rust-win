@@ -8,7 +8,9 @@ use tracing::info;
 pub mod auth;
 pub mod commands;
 pub mod config;
+pub mod cron;
 pub mod error;
+pub mod gateway;
 pub mod skills;
 pub mod tools;
 
@@ -154,12 +156,12 @@ pub async fn run() -> Result<()> {
         Commands::Gateway(ref cmd) => commands::handle_gateway(cmd.clone()).await?,
         Commands::Cron(ref cmd) => commands::handle_cron(cmd.clone()).await?,
         Commands::Config(ref cmd) => commands::handle_config(cmd.clone())?,
-        Commands::Setup { .. } => { info!("setup not implemented"); }
-        Commands::Doctor { .. } => { info!("doctor not implemented"); }
+        Commands::Setup { skip_auth, skip_model } => commands::handle_setup(*skip_auth, *skip_model)?,
+        Commands::Doctor { all, check } => commands::handle_doctor(*all, check.as_deref())?,
         Commands::Status => commands::handle_status()?,
         Commands::Version => { println!("hermes {}", env!("CARGO_PKG_VERSION")); }
-        Commands::Update => { info!("update not implemented"); }
-        Commands::Uninstall => { info!("uninstall not implemented"); }
+        Commands::Update => commands::handle_update()?,
+        Commands::Uninstall => commands::handle_uninstall()?,
     }
     Ok(())
 }

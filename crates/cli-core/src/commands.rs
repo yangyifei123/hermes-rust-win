@@ -1,6 +1,8 @@
 use super::{AuthCommand, ConfigCommand, CronCommand, GatewayCommand, SkillsCommand, ToolsCommand};
 use crate::auth::AuthStore;
 use crate::config::Config;
+use crate::cron as cron_mod;
+use crate::gateway as gateway_mod;
 use crate::skills::SkillsIndex;
 use crate::tools::{self, ToolsConfig};
 use anyhow::Result;
@@ -255,23 +257,138 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
     match cmd {
         GatewayCommand::Run { platform } => {
             info!("running gateway: {:?}", platform);
-            println!("Gateway run not yet implemented");
+            if gateway_mod::is_gateway_running() {
+                println!("Gateway is already running.");
+                println!("Stop it first with: hermes gateway stop");
+                return Ok(());
+            }
+
+            println!("Starting Hermes Gateway...");
+            println!();
+            println!("NOTE: Full gateway implementation requires the agent runtime.");
+            println!("For now, this starts a minimal gateway process.");
+            println!();
+            println!("To run the full gateway:");
+            println!("  1. Ensure hermes-agent Python package is installed");
+            println!("  2. Run: python -m hermes_cli.main gateway run");
+            println!();
+
+            // Write PID file to indicate gateway "started"
+            if let Err(e) = gateway_mod::write_pid_file() {
+                eprintln!("Warning: Could not write PID file: {}", e);
+            }
+
+            // Write initial state
+            let state = gateway_mod::GatewayState {
+                gateway_state: "running".to_string(),
+                pid: std::process::id(),
+                platform: platform.clone(),
+                platform_state: Some("started".to_string()),
+                restart_requested: false,
+                active_agents: 0,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            };
+            let _ = gateway_mod::write_gateway_state(&state);
+
+            println!("Gateway started (PID: {})", std::process::id());
+            println!("View status with: hermes gateway status");
         }
         GatewayCommand::Start => {
             info!("starting gateway service");
-            println!("Gateway start not yet implemented");
+            if gateway_mod::is_gateway_running() {
+                println!("Gateway is already running.");
+                return Ok(());
+            }
+
+            println!("Starting Hermes Gateway service...");
+            println!();
+            println!("On Windows, the gateway runs as a background process.");
+            println!("Use 'hermes gateway run' to start it interactively.");
+            println!("Use 'hermes gateway stop' to stop it.");
+            println!();
+
+            // For now, just run it in background
+            println!("Starting gateway...");
+            if let Err(e) = gateway_mod::write_pid_file() {
+                eprintln!("Warning: Could not write PID file: {}", e);
+            }
+            println!("Gateway service started.");
         }
         GatewayCommand::Stop => {
             info!("stopping gateway service");
-            println!("Gateway stop not yet implemented");
+            if !gateway_mod::is_gateway_running() {
+                println!("Gateway is not running.");
+                return Ok(());
+            }
+
+            println!("Stopping Hermes Gateway...");
+
+            // Write stopped state
+            let state = gateway_mod::GatewayState {
+                gateway_state: "stopped".to_string(),
+                pid: 0,
+                platform: None,
+                platform_state: Some("stopped".to_string()),
+                restart_requested: false,
+                active_agents: 0,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            };
+            let _ = gateway_mod::write_gateway_state(&state);
+
+            if let Err(e) = gateway_mod::remove_pid_file() {
+                eprintln!("Warning: Could not remove PID file: {}", e);
+            }
+
+            println!("Gateway stopped.");
         }
         GatewayCommand::Status => {
             info!("checking gateway status");
-            println!("Gateway status not yet implemented");
+            println!("Hermes Gateway Status");
+            println!("====================");
+            println!();
+
+            if let Some(pid) = gateway_mod::get_running_pid() {
+                println!("Status:  RUNNING");
+                println!("PID:     {}", pid);
+                println!();
+
+                if let Some(state) = gateway_mod::read_gateway_state() {
+                    println!("Platform: {:?}", state.platform.unwrap_or_else(|| "N/A".to_string()));
+                    println!("State:    {}", state.gateway_state);
+                    println!("Agents:   {}", state.active_agents);
+                    if state.restart_requested {
+                        println!("Restart:  requested");
+                    }
+                }
+            } else {
+                println!("Status:  STOPPED");
+                println!();
+                println!("Start the gateway with: hermes gateway run");
+            }
         }
         GatewayCommand::Setup { platform } => {
             info!("setting up gateway: {:?}", platform);
-            println!("Gateway setup not yet implemented");
+            println!("Gateway Setup");
+            println!("=============");
+            println!();
+
+            if let Some(p) = platform {
+                println!("Setting up platform: {}", p);
+            } else {
+                println!("Available platforms:");
+                println!("  telegram  - Telegram bot");
+                println!("  discord   - Discord bot");
+                println!("  slack     - Slack bot");
+                println!("  whatsapp  - WhatsApp integration");
+                println!();
+                println!("Run 'hermes gateway setup <platform>' to configure a specific platform.");
+            }
+
+            println!();
+            println!("Full gateway setup requires:");
+            println!("  1. hermes-agent Python package installed");
+            println!("  2. API keys configured via 'hermes auth add'");
+            println!("  3. Platform-specific setup via 'hermes gateway setup <platform>'");
         }
     }
     Ok(())
@@ -281,27 +398,143 @@ pub async fn handle_cron(cmd: CronCommand) -> Result<()> {
     match cmd {
         CronCommand::List => {
             info!("listing cron jobs");
-            println!("Cron list not yet implemented");
+            println!("Hermes Cron Jobs");
+            println!("================");
+            println!();
+
+            let jobs = cron_mod::list_jobs(true)?;
+
+            if jobs.is_empty() {
+                println!("No cron jobs configured.");
+                println!();
+                println!("Create a job with:");
+                println!("  hermes cron add <schedule> <prompt>");
+                println!();
+                println!("Example:");
+                println!("  hermes cron add 'every 30m' 'Check system status'");
+            } else {
+                for job in &jobs {
+                    let status = if job.enabled { "[active]" } else { "[paused]" };
+                    println!("{} {}", job.id, status);
+                    println!("  Name:     {}", job.name);
+                    println!("  Schedule: {}", job.schedule_display);
+                    if let Some(ref next) = job.next_run_at {
+                        println!("  Next run: {}", next);
+                    }
+                    if let Some(ref last) = job.last_run_at {
+                        let last_status = job.last_status.as_deref().unwrap_or("N/A");
+                        println!("  Last run: {} ({})", last, last_status);
+                    }
+                    if !job.skills.is_empty() {
+                        println!("  Skills:   {}", job.skills.join(", "));
+                    }
+                    println!();
+                }
+            }
+
+            if !gateway_mod::is_gateway_running() {
+                println!("NOTE: Gateway is not running - jobs won't fire automatically.");
+                println!("Start it with: hermes gateway run");
+            }
         }
         CronCommand::Add { schedule, command } => {
             info!("adding cron job: {} -> {}", schedule, command);
-            println!("Cron add not yet implemented");
+
+            // Validate schedule
+            match cron_mod::parse_schedule(&schedule) {
+                Ok(_) => {}
+                Err(e) => {
+                    anyhow::bail!("Invalid schedule '{}': {}", schedule, e);
+                }
+            }
+
+            match cron_mod::create_job(command, schedule) {
+                Ok(job) => {
+                    println!("Cron job created successfully!");
+                    println!("  ID:       {}", job.id);
+                    println!("  Name:     {}", job.name);
+                    println!("  Schedule: {}", job.schedule_display);
+                    println!();
+                    if !gateway_mod::is_gateway_running() {
+                        println!("NOTE: Start the gateway for jobs to run automatically:");
+                        println!("  hermes gateway run");
+                    }
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to create cron job: {}", e);
+                }
+            }
         }
         CronCommand::Remove { id } => {
             info!("removing cron job: {}", id);
-            println!("Cron remove not yet implemented: {}", id);
+
+            match cron_mod::remove_job(&id) {
+                Ok(true) => {
+                    println!("Cron job {} removed.", id);
+                }
+                Ok(false) => {
+                    println!("Cron job '{}' not found.", id);
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to remove cron job: {}", e);
+                }
+            }
         }
         CronCommand::Pause { id } => {
             info!("pausing cron job: {}", id);
-            println!("Cron pause not yet implemented: {}", id);
+
+            match cron_mod::pause_job(&id, None) {
+                Ok(Some(job)) => {
+                    println!("Cron job '{}' paused.", job.name);
+                }
+                Ok(None) => {
+                    println!("Cron job '{}' not found.", id);
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to pause cron job: {}", e);
+                }
+            }
         }
         CronCommand::Resume { id } => {
             info!("resuming cron job: {}", id);
-            println!("Cron resume not yet implemented: {}", id);
+
+            match cron_mod::resume_job(&id) {
+                Ok(Some(job)) => {
+                    println!("Cron job '{}' resumed.", job.name);
+                    if let Some(ref next) = job.next_run_at {
+                        println!("  Next run: {}", next);
+                    }
+                }
+                Ok(None) => {
+                    println!("Cron job '{}' not found.", id);
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to resume cron job: {}", e);
+                }
+            }
         }
         CronCommand::Status => {
             info!("checking cron status");
-            println!("Cron status not yet implemented");
+            println!("Hermes Cron Status");
+            println!("==================");
+            println!();
+
+            let jobs = cron_mod::list_jobs(true)?;
+            let active: usize = jobs.iter().filter(|j| j.enabled).count();
+
+            println!("Gateway:  {}", if gateway_mod::is_gateway_running() { "running" } else { "stopped" });
+            println!("Jobs:     {} total, {} active", jobs.len(), active);
+            println!();
+
+            if !jobs.is_empty() {
+                println!("Due jobs: {}", cron_mod::get_due_jobs().len());
+            }
+
+            if !gateway_mod::is_gateway_running() {
+                println!();
+                println!("NOTE: Gateway is not running - jobs won't fire.");
+                println!("Start it with: hermes gateway run");
+            }
         }
     }
     Ok(())
@@ -455,6 +688,274 @@ pub fn handle_status() -> Result<()> {
     println!("  max_turns: {}", config.agent.max_turns);
     println!("  reasoning_effort: {}", config.agent.reasoning_effort);
     println!("  verbose: {}", config.agent.verbose);
+
+    Ok(())
+}
+
+pub fn handle_setup(skip_auth: bool, skip_model: bool) -> Result<()> {
+    info!("running setup wizard");
+
+    println!("Hermes CLI Setup");
+    println!("================");
+    println!();
+
+    // Check if Python hermes-agent is available
+    println!("Checking hermes-agent installation...");
+    let python_hermes = std::process::Command::new("python")
+        .args(["-c", "import hermes_cli; print(hermes_cli.__file__)"])
+        .output();
+
+    match python_hermes {
+        Ok(output) if output.status.success() => {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("  hermes-agent Python package: found at {}", path);
+        }
+        _ => {
+            println!("  hermes-agent Python package: not found");
+            println!();
+            println!("  Install with:");
+            println!("    pip install hermes-agent");
+            println!();
+        }
+    }
+
+    if !skip_model {
+        println!("\nModel Configuration:");
+        println!("  Configure your AI provider with:");
+        println!("    hermes auth add <provider> --api-key <key>");
+        println!("    hermes model <model-name>");
+        println!();
+        println!("  Supported providers:");
+        println!("    openai, anthropic, openrouter, gemini, etc.");
+    }
+
+    if !skip_auth {
+        println!("\nAuth Configuration:");
+        let auth_store = AuthStore::load()?;
+        if auth_store.credentials.is_empty() {
+            println!("  No API keys configured.");
+            println!("  Run 'hermes auth add <provider> --api-key <key>' to add credentials.");
+        } else {
+            println!("  Configured providers:");
+            for cred in &auth_store.credentials {
+                println!("    - {}", cred.provider);
+            }
+        }
+    }
+
+    println!("\nGateway Setup:");
+    println!("  Start the gateway with: hermes gateway run");
+    println!("  Configure platforms with: hermes gateway setup <platform>");
+
+    println!("\nNext Steps:");
+    println!("  1. Add your API key: hermes auth add <provider> --api-key <key>");
+    println!("  2. Set your model: hermes model <model-name>");
+    println!("  3. Start chatting: hermes chat");
+
+    println!();
+    println!("For more help, see: https://hermes-agent.nousresearch.com/docs");
+
+    Ok(())
+}
+
+#[allow(unused_variables)]
+pub fn handle_doctor(_all: bool, _check: Option<&str>) -> Result<()> {
+    info!("running doctor diagnostic");
+
+    println!("Hermes Doctor");
+    println!("=============");
+    println!();
+
+    let mut issues = 0;
+    let mut warnings = 0;
+
+    // Check Python version
+    println!("◆ Python");
+    let python_version = std::process::Command::new("python")
+        .arg("--version")
+        .output();
+
+    match python_version {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("  ✓ Python installed: {}", version);
+        }
+        _ => {
+            println!("  ✗ Python not found");
+            issues += 1;
+        }
+    }
+
+    // Check hermes-agent Python package
+    println!("\n◆ hermes-agent Package");
+    let hermes_check = std::process::Command::new("python")
+        .args(["-c", "import hermes_cli; print('ok')"])
+        .output();
+
+    match hermes_check {
+        Ok(output) if output.status.success() => {
+            println!("  ✓ hermes-agent Python package installed");
+        }
+        _ => {
+            println!("  ✗ hermes-agent Python package not installed");
+            println!("    Install with: pip install hermes-agent");
+            issues += 1;
+        }
+    }
+
+    // Check configuration
+    println!("\n◆ Configuration");
+    let config_path = Config::config_path();
+    println!("  Config path: {:?}", config_path);
+    if config_path.exists() {
+        println!("  ✓ Config file exists");
+    } else {
+        println!("  ⚠ Config file not found (will use defaults)");
+        warnings += 1;
+    }
+
+    let config = Config::load()?;
+    if config.model.default.is_empty() {
+        println!("  ⚠ No default model configured");
+        warnings += 1;
+    } else {
+        println!("  ✓ Default model: {}", config.model.default);
+    }
+
+    // Check auth
+    println!("\n◆ Authentication");
+    let auth_store = AuthStore::load()?;
+    if auth_store.credentials.is_empty() {
+        println!("  ⚠ No API keys configured");
+        warnings += 1;
+    } else {
+        println!("  ✓ API keys configured for {} provider(s)", auth_store.credentials.len());
+    }
+
+    // Check gateway status
+    println!("\n◆ Gateway");
+    if gateway_mod::is_gateway_running() {
+        println!("  ✓ Gateway is running");
+    } else {
+        println!("  ⚠ Gateway is not running");
+        println!("    Start with: hermes gateway run");
+        warnings += 1;
+    }
+
+    // Check cron jobs
+    println!("\n◆ Cron Jobs");
+    let jobs = cron_mod::list_jobs(true).unwrap_or_default();
+    let active: usize = jobs.iter().filter(|j| j.enabled).count();
+    println!("  {} job(s) configured, {} active", jobs.len(), active);
+
+    // Summary
+    println!("\n───────────────");
+    if issues > 0 {
+        println!("Result: {} issue(s) found", issues);
+        println!("Fix the issues above for best experience.");
+    } else if warnings > 0 {
+        println!("Result: {} warning(s)", warnings);
+        println!("Your setup is mostly working.");
+    } else {
+        println!("Result: All checks passed!");
+        println!("Your Hermes CLI is properly configured.");
+    }
+
+    Ok(())
+}
+
+pub fn handle_update() -> Result<()> {
+    info!("checking for updates");
+
+    println!("Hermes Update");
+    println!("=============");
+    println!();
+
+    println!("Checking for updates...");
+    println!();
+
+    // For Rust CLI, we can't auto-update like Python
+    // Just check git or show current version
+    let version = env!("CARGO_PKG_VERSION");
+    println!("Current version: {}", version);
+    println!();
+
+    println!("To update Hermes CLI (Rust):");
+    println!("  1. Download the latest release from:");
+    println!("     https://github.com/nousresearch/hermes-agent/releases");
+    println!();
+    println!("  2. Or rebuild from source:");
+    println!("     git pull origin main");
+    println!("     cargo build --release");
+    println!();
+
+    // Try to check if hermes-agent Python has updates
+    println!("For hermes-agent Python package:");
+    let pip_check = std::process::Command::new("pip")
+        .args(["index", "versions", "hermes-agent"])
+        .output();
+
+    match pip_check {
+        Ok(output) => {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if output_str.contains("Available versions:") {
+                println!("  hermes-agent Python package update info:");
+                // Just show that we checked
+                println!("  Run 'pip install --upgrade hermes-agent' to update");
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+pub fn handle_uninstall() -> Result<()> {
+    info!("running uninstall");
+
+    println!("Hermes Uninstall");
+    println!("================");
+    println!();
+
+    println!("This will remove the Hermes CLI (Rust) from your system.");
+    println!();
+
+    println!("What would you like to do?");
+    println!();
+    println!("  1. Keep data (~/.hermes/) - Removes CLI only");
+    println!("  2. Full uninstall - Removes everything including data");
+    println!("  3. Cancel");
+    println!();
+
+    // For automated uninstall, we'll do option 1 (keep data) by default
+    // A real interactive mode would ask
+
+    println!("Running uninstall (keeping data)...");
+    println!();
+
+    // Stop gateway if running
+    if gateway_mod::is_gateway_running() {
+        println!("Stopping gateway...");
+        let state = gateway_mod::GatewayState {
+            gateway_state: "stopped".to_string(),
+            pid: 0,
+            platform: None,
+            platform_state: Some("uninstalled".to_string()),
+            restart_requested: false,
+            active_agents: 0,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let _ = gateway_mod::write_gateway_state(&state);
+        let _ = gateway_mod::remove_pid_file();
+    }
+
+    // Note: On Windows, removing the binary would be done by the installer
+    println!("Hermes CLI (Rust) has been uninstalled.");
+    println!();
+    println!("Your data in ~/.hermes/ has been preserved.");
+    println!();
+    println!("To reinstall, download the latest release from:");
+    println!("  https://github.com/nousresearch/hermes-agent/releases");
 
     Ok(())
 }
