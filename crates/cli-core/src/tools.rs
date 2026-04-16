@@ -157,18 +157,19 @@ impl ToolsConfig {
 }
 
 /// List all tools with their status
-pub fn list_tools(all: bool) -> Vec<(String, String, String, bool)> {
-    let config = ToolsConfig::load().unwrap_or_default();
+pub fn list_tools(all: bool) -> Result<Vec<(String, String, String, bool)>> {
+    let config = ToolsConfig::load()
+        .map_err(|e| anyhow::anyhow!("failed to load tools config: {}", e))?;
     let tools = get_builtin_tools();
 
-    tools
+    Ok(tools
         .into_iter()
-        .filter(|tool| all || !config.is_disabled(&tool.name.to_string()))
+        .filter(|tool| all || !config.is_disabled(tool.name))
         .map(|tool| {
-            let enabled = !config.is_disabled(&tool.name.to_string());
+            let enabled = !config.is_disabled(tool.name);
             (tool.name.to_string(), tool.description.to_string(), tool.toolset.to_string(), enabled)
         })
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]

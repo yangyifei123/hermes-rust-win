@@ -150,7 +150,7 @@ pub async fn run() -> Result<()> {
         Commands::Auth(ref cmd) => commands::handle_auth(cmd.clone()).await?,
         Commands::Model { current, global, model } => commands::handle_model(*current, *global, model.as_deref())?,
         Commands::Tools(ref cmd) => commands::handle_tools(cmd.clone())?,
-        Commands::Skills(ref cmd) => commands::handle_skills(cmd.clone()).await?,
+        Commands::Skills(ref cmd) => commands::handle_skills(cmd.clone())?,
         Commands::Gateway(ref cmd) => commands::handle_gateway(cmd.clone()).await?,
         Commands::Cron(ref cmd) => commands::handle_cron(cmd.clone()).await?,
         Commands::Config(ref cmd) => commands::handle_config(cmd.clone())?,

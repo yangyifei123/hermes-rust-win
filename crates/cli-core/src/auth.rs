@@ -33,7 +33,8 @@ impl AuthStore {
         Ok(store)
     }
 
-    /// Save auth store to disk
+    /// Save auth store to disk securely
+    /// Uses atomic write: temp file → set permissions → rename
     pub fn save(&self) -> Result<()> {
         let path = Self::auth_path();
         if let Some(parent) = path.parent() {
@@ -42,15 +43,35 @@ impl AuthStore {
         }
         let content = serde_yaml::to_string(self)
             .context("failed to serialize auth store")?;
-        // Set file permissions to owner read/write only (600)
+
+        // Atomic write: write to temp file first
+        let temp_path = path.with_extension("tmp");
+        fs::write(&temp_path, &content)
+            .with_context(|| format!("failed to write auth store to temp {:?}", temp_path))?;
+
+        // Set restrictive permissions on Unix (owner only)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::Permissions::mode(0o600);
-            fs::set_permissions(&path, perms)?;
+            fs::set_permissions(&temp_path, perms)?;
         }
-        fs::write(&path, content)
-            .with_context(|| format!("failed to write auth store to {:?}", path))?;
+
+        // Windows: mark file as hidden and system to provide some protection
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            // Set file as hidden
+            let _ = Command::new("attrib")
+                .arg("+H")
+                .arg(&temp_path)
+                .output();
+        }
+
+        // Atomic rename (overwrites existing file)
+        fs::rename(&temp_path, &path)
+            .with_context(|| format!("failed to rename temp auth store to {:?}", path))?;
+
         Ok(())
     }
 

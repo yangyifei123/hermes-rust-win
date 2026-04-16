@@ -108,7 +108,7 @@ pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
     match cmd {
         ToolsCommand::List { all } => {
             info!("listing tools (all: {})", all);
-            let tools = tools::list_tools(all);
+            let tools = tools::list_tools(all)?;
             if tools.is_empty() {
                 println!("No tools available.");
             } else {
@@ -145,7 +145,7 @@ pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_skills(cmd: SkillsCommand) -> Result<()> {
+pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
     match cmd {
         SkillsCommand::Search { query } => {
             info!("searching skills: {:?}", query);
