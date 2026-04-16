@@ -188,4 +188,47 @@ mod tests {
             assert_eq!(system, Some("You are helpful".to_string()));
         } else { panic!("expected Chat"); }
     }
+    #[test]
+    fn test_cli_parse_status() {
+        let cli = Cli::parse_from(vec!["hermes", "status"]);
+        assert!(matches!(cli.command, Commands::Status));
+    }
+    #[test]
+    fn test_cli_parse_config_show() {
+        let cli = Cli::parse_from(vec!["hermes", "config", "show"]);
+        assert!(matches!(cli.command, Commands::Config(ConfigCommand::Show)));
+    }
+    #[test]
+    fn test_cli_parse_config_get() {
+        let cli = Cli::parse_from(vec!["hermes", "config", "get", "model.default"]);
+        if let Commands::Config(ConfigCommand::Get { key }) = cli.command {
+            assert_eq!(key, "model.default");
+        } else { panic!("expected Config::Get"); }
+    }
+    #[test]
+    fn test_cli_parse_config_set() {
+        let cli = Cli::parse_from(vec!["hermes", "config", "set", "model.default", "gpt-4"]);
+        if let Commands::Config(ConfigCommand::Set { key, value }) = cli.command {
+            assert_eq!(key, "model.default");
+            assert_eq!(value, "gpt-4");
+        } else { panic!("expected Config::Set"); }
+    }
+    #[test]
+    fn test_cli_parse_model_current() {
+        let cli = Cli::parse_from(vec!["hermes", "model", "--current"]);
+        if let Commands::Model { current, global, model } = cli.command {
+            assert!(current);
+            assert!(!global);
+            assert_eq!(model, None);
+        } else { panic!("expected Model"); }
+    }
+    #[test]
+    fn test_cli_parse_model_global() {
+        let cli = Cli::parse_from(vec!["hermes", "model", "--global", "claude-3"]);
+        if let Commands::Model { current, global, model } = cli.command {
+            assert!(!current);
+            assert!(global);
+            assert_eq!(model, Some("claude-3".to_string()));
+        } else { panic!("expected Model"); }
+    }
 }
