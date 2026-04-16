@@ -1,0 +1,56 @@
+﻿[workspace]
+resolver = "2"
+members = [
+    "crates/common",
+    "crates/cli-core",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["Nous Research"]
+license = "MIT"
+
+[workspace.dependencies]
+# Internal crates
+hermes-common = { path = "crates/common" }
+hermes-cli-core = { path = "crates/cli-core" }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo", "env", "unicode", "wrap_help"] }
+clap_complete = "4.5"
+
+# Async
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+tokio-util = "0.7"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Config
+dotenvy = "0.15"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Utils
+directories = "5.0"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
