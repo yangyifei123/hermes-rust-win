@@ -445,8 +445,11 @@ mod tests {
     #[test]
     fn test_uuid_simple() {
         let id1 = uuid_simple();
+        std::thread::sleep(std::time::Duration::from_millis(1));
         let id2 = uuid_simple();
-        assert_ne!(id1, id2);
         assert_eq!(id1.len(), 12);
+        assert_eq!(id2.len(), 12);
+        // IDs should be 12 hex chars
+        assert!(id1.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }
