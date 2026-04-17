@@ -300,22 +300,54 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
                 return Ok(());
             }
 
-            println!("Starting Hermes Gateway service...");
+            // Try Windows service first
+            if gateway_mod::is_service_installed() {
+                println!("Starting Hermes Gateway service...");
+                match gateway_mod::start_service() {
+                    Ok(()) => {
+                        println!("Gateway service started.");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Could not start Windows service: {}", e);
+                        println!("Falling back to process mode...");
+                    }
+                }
+            }
+
+            // Fallback: start as process
+            println!("Starting Hermes Gateway...");
             println!();
-            println!("On Windows, the gateway runs as a background process.");
-            println!("Use 'hermes gateway run' to start it interactively.");
-            println!("Use 'hermes gateway stop' to stop it.");
+            println!("On Windows, you can also install as a service:");
+            println!("  hermes gateway install");
             println!();
 
-            // For now, just run it in background
-            println!("Starting gateway...");
             if let Err(e) = gateway_mod::write_pid_file() {
                 eprintln!("Warning: Could not write PID file: {}", e);
             }
-            println!("Gateway service started.");
+            println!("Gateway started.");
         }
         GatewayCommand::Stop => {
             info!("stopping gateway service");
+
+            // Try Windows service first
+            let service_status = gateway_mod::get_service_status();
+            if service_status == gateway_mod::ServiceStatus::Running
+                || service_status == gateway_mod::ServiceStatus::StartPending
+            {
+                println!("Stopping Hermes Gateway service...");
+                match gateway_mod::stop_service() {
+                    Ok(()) => {
+                        println!("Gateway service stopped.");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Could not stop Windows service: {}", e);
+                        println!("Falling back to process mode...");
+                    }
+                }
+            }
+
             if !gateway_mod::is_gateway_running() {
                 println!("Gateway is not running.");
                 return Ok(());
@@ -347,23 +379,39 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
             println!("====================");
             println!();
 
+            // Show Windows service status
+            let service_status = gateway_mod::get_service_status();
+            if service_status != gateway_mod::ServiceStatus::NotApplicable {
+                println!("Service:  {}", service_status);
+                if service_status == gateway_mod::ServiceStatus::NotFound {
+                    println!("  (not installed as Windows service)");
+                }
+                println!();
+            }
+
             if let Some(pid) = gateway_mod::get_running_pid() {
-                println!("Status:  RUNNING");
-                println!("PID:     {}", pid);
+                println!("Status:   RUNNING");
+                println!("PID:      {}", pid);
                 println!();
 
                 if let Some(state) = gateway_mod::read_gateway_state() {
                     println!("Platform: {:?}", state.platform.unwrap_or_else(|| "N/A".to_string()));
-                    println!("State:    {}", state.gateway_state);
-                    println!("Agents:   {}", state.active_agents);
+                    println!("State:     {}", state.gateway_state);
+                    println!("Agents:    {}", state.active_agents);
                     if state.restart_requested {
-                        println!("Restart:  requested");
+                        println!("Restart:   requested");
                     }
                 }
             } else {
-                println!("Status:  STOPPED");
+                println!("Status:   STOPPED");
                 println!();
-                println!("Start the gateway with: hermes gateway run");
+                if gateway_mod::is_service_installed() {
+                    println!("Start the service with: hermes gateway start");
+                    println!("Run interactively with:  hermes gateway run");
+                } else {
+                    println!("Start the gateway with: hermes gateway run");
+                    println!("Install as service:    hermes gateway install");
+                }
             }
         }
         GatewayCommand::Setup { platform } => {
