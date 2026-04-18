@@ -22,9 +22,9 @@ pub enum Provider {
     // Google
     Gemini,
     // Chinese providers
-    Zai,        // Zhipu AI (GLM)
-    Kimi,       // Moonshot AI
-    KimiCn,     // Moonshot AI (China endpoint)
+    Zai,    // Zhipu AI (GLM)
+    Kimi,   // Moonshot AI
+    KimiCn, // Moonshot AI (China endpoint)
     MiniMax,
     MiniMaxCn,
     // Other providers
@@ -44,6 +44,7 @@ pub enum Provider {
 impl Provider {
     /// Parse a provider name string into a Provider enum.
     /// Case-insensitive, supports both kebab-case and snake_case.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "openai" => Some(Provider::OpenAI),
@@ -144,7 +145,7 @@ impl Provider {
             Provider::Kilocode => "https://api.kilocode.ai/v1",
             Provider::OpenCodeZen => "https://api.opencode.ai/v1",
             Provider::OpenCodeGo => "https://api.opencode.ai/v1",
-            Provider::Copilot => "", // Copilot uses its own protocol
+            Provider::Copilot => "",    // Copilot uses its own protocol
             Provider::CopilotAcp => "", // ACP uses its own protocol
             Provider::HuggingFace => "https://api-inference.huggingface.co/models",
             Provider::DeepSeek => "https://api.deepseek.com/v1",
@@ -170,7 +171,7 @@ impl Provider {
             Provider::Kilocode => "KILOCODE_API_KEY",
             Provider::OpenCodeZen => "OPENCODE_ZEN_API_KEY",
             Provider::OpenCodeGo => "OPENCODE_GO_API_KEY",
-            Provider::Copilot => "", // Uses GitHub auth
+            Provider::Copilot => "",    // Uses GitHub auth
             Provider::CopilotAcp => "", // Uses ACP protocol
             Provider::HuggingFace => "HF_TOKEN",
             Provider::DeepSeek => "DEEPSEEK_API_KEY",
@@ -296,7 +297,9 @@ pub struct SessionId(pub String);
 
 impl SessionId {
     pub fn new() -> Self {
-        Self(format!("session-{}", uuid_simple()))
+        use uuid::Timestamp;
+        let ts = Timestamp::now(uuid::NoContext);
+        Self(format!("session-{}", uuid::Uuid::new_v7(ts)))
     }
 }
 
@@ -337,15 +340,6 @@ impl Credentials {
     }
 }
 
-fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    format!("{:x}", now)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,16 +373,28 @@ mod tests {
     #[test]
     fn test_provider_default_model() {
         assert_eq!(Provider::OpenAI.default_model(), "gpt-4o");
-        assert_eq!(Provider::Anthropic.default_model(), "claude-sonnet-4-20250514");
+        assert_eq!(
+            Provider::Anthropic.default_model(),
+            "claude-sonnet-4-20250514"
+        );
         assert_eq!(Provider::Gemini.default_model(), "gemini-2.5-pro");
         assert_eq!(Provider::Zai.default_model(), "glm-5");
     }
 
     #[test]
     fn test_provider_default_base_url() {
-        assert_eq!(Provider::OpenAI.default_base_url(), "https://api.openai.com/v1");
-        assert_eq!(Provider::Anthropic.default_base_url(), "https://api.anthropic.com/v1");
-        assert_eq!(Provider::Ollama.default_base_url(), "http://localhost:11434");
+        assert_eq!(
+            Provider::OpenAI.default_base_url(),
+            "https://api.openai.com/v1"
+        );
+        assert_eq!(
+            Provider::Anthropic.default_base_url(),
+            "https://api.anthropic.com/v1"
+        );
+        assert_eq!(
+            Provider::Ollama.default_base_url(),
+            "http://localhost:11434"
+        );
     }
 
     #[test]
@@ -399,7 +405,7 @@ mod tests {
         assert_eq!(Provider::HuggingFace.env_key(), "HF_TOKEN");
     }
 
-   #[test]
+    #[test]
     fn test_provider_auth_type() {
         assert_eq!(Provider::OpenAI.auth_type(), AuthType::ApiKey);
         assert_eq!(Provider::Ollama.auth_type(), AuthType::None);

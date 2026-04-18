@@ -1,4 +1,8 @@
-use super::{AuthCommand, ConfigCommand, CronCommand, GatewayCommand, SkillsCommand, ToolsCommand};
+use super::{
+    AuthCommand, ClawCommand, ConfigCommand, CronCommand, DebugCommand, GatewayCommand,
+    McpCommand, MemoryCommand, PairingCommand, PluginsCommand, ProfileCommand,
+    SessionsCommand, SkillsCommand, ToolsCommand, WebhookCommand,
+};
 use crate::auth::AuthStore;
 use crate::config::Config;
 use crate::cron as cron_mod;
@@ -10,7 +14,7 @@ use tracing::info;
 
 pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
     match cmd {
-        AuthCommand::Add { provider, api_key, base_url } => {
+        AuthCommand::Add { provider, api_key, base_url, .. } => {
             info!("adding auth for provider: {}", provider);
             if api_key.is_none() {
                 anyhow::bail!("API key is required. Use: hermes auth add {} --api-key <KEY>", provider);
@@ -24,7 +28,7 @@ pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
             store.save()?;
             println!("Auth credentials added for {}", provider);
         }
-        AuthCommand::List => {
+        AuthCommand::List { .. } => {
             info!("listing auth credentials");
             let store = AuthStore::load()?;
             let credentials = store.list();
@@ -41,7 +45,7 @@ pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
                 }
             }
         }
-        AuthCommand::Remove { provider } => {
+        AuthCommand::Remove { provider, .. } => {
             info!("removing auth for provider: {}", provider);
             let mut store = AuthStore::load()?;
             if store.remove(&provider) {
@@ -51,7 +55,7 @@ pub async fn handle_auth(cmd: AuthCommand) -> Result<()> {
                 println!("No auth credentials found for {}", provider);
             }
         }
-        AuthCommand::Reset => {
+        AuthCommand::Reset { .. } => {
             info!("resetting all auth credentials");
             let mut store = AuthStore::load()?;
             let count = store.credentials.len();
@@ -108,7 +112,7 @@ pub fn handle_model(current: bool, global: bool, model: Option<&str>) -> Result<
 
 pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
     match cmd {
-        ToolsCommand::List { all } => {
+        ToolsCommand::List { all, .. } => {
             info!("listing tools (all: {})", all);
             let tools = tools::list_tools(all)?;
             if tools.is_empty() {
@@ -121,27 +125,30 @@ pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
                 }
             }
         }
-        ToolsCommand::Disable { name } => {
-            info!("disabling tool: {}", name);
-            let mut config = ToolsConfig::load()?;
-            let builtins: Vec<_> = tools::get_builtin_tools()
-                .iter()
-                .map(|t| t.name.to_string())
-                .collect();
-            if !builtins.contains(&name) {
-                println!("Warning: '{}' is not a built-in tool.", name);
-                println!("Known tools: {}", builtins.join(", "));
+        ToolsCommand::Disable { names, .. } => {
+            for name in &names {
+                info!("disabling tool: {}", name);
+                let mut config = ToolsConfig::load()?;
+                let builtins: Vec<_> = tools::get_builtin_tools()
+                    .iter()
+                    .map(|t| t.name.to_string())
+                    .collect();
+                if !builtins.contains(name) {
+                    println!("Warning: '{}' is not a built-in tool.", name);
+                }
+                config.disable(name);
+                config.save()?;
+                println!("Tool '{}' disabled.", name);
             }
-            config.disable(&name);
-            config.save()?;
-            println!("Tool '{}' disabled.", name);
         }
-        ToolsCommand::Enable { name } => {
-            info!("enabling tool: {}", name);
-            let mut config = ToolsConfig::load()?;
-            config.enable(&name);
-            config.save()?;
-            println!("Tool '{}' enabled.", name);
+        ToolsCommand::Enable { names, .. } => {
+            for name in &names {
+                info!("enabling tool: {}", name);
+                let mut config = ToolsConfig::load()?;
+                config.enable(name);
+                config.save()?;
+                println!("Tool '{}' enabled.", name);
+            }
         }
     }
     Ok(())
@@ -149,7 +156,7 @@ pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
 
 pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
     match cmd {
-        SkillsCommand::Search { query } => {
+        SkillsCommand::Search { query, .. } => {
             info!("searching skills: {:?}", query);
             let mut index = SkillsIndex::load()?;
             let count = index.scan_local_skills()?;
@@ -178,7 +185,7 @@ pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
             }
             let _ = count; // suppress unused warning
         }
-        SkillsCommand::Browse => {
+        SkillsCommand::Browse { .. } => {
             info!("browsing skills hub");
             println!("Skills Hub:");
             println!("  Browse installed skills: hermes skills search");
@@ -217,29 +224,25 @@ pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
                 println!("Skill '{}' not found. Run 'hermes skills search' to see installed skills.", name);
             }
         }
-        SkillsCommand::Install { name } => {
-            info!("installing skill: {}", name);
-            // For now, just acknowledge the install request
-            // Full install from GitHub would require git and network access
-            if name.contains('/') {
-                println!("Skill install from '{}' requested.", name);
+        SkillsCommand::Install { identifier, .. } => {
+            info!("installing skill: {}", identifier);
+            if identifier.contains('/') {
+                println!("Skill install from '{}' requested.", identifier);
                 println!("Note: Full remote install requires network access.");
                 println!("For now, skills should be installed manually to ~/.hermes/skills/");
             } else {
-                println!("Installing skill '{}'...", name);
-                println!("Skill '{}' is not available in the registry.", name);
+                println!("Installing skill '{}'...", identifier);
+                println!("Skill '{}' is not available in the registry.", identifier);
             }
         }
-        SkillsCommand::Remove { name } => {
+        SkillsCommand::Uninstall { name } => {
             info!("removing skill: {}", name);
             let mut index = SkillsIndex::load()?;
             if index.remove(&name) {
                 index.save()?;
-                // Try to remove the skill directory
                 let skills_home = SkillsIndex::skills_home();
                 let skill_path = skills_home.join(&name);
                 if skill_path.exists() {
-                    // Note: This is a simple remove - in production you'd want to confirm
                     println!("Skill '{}' removed from index.", name);
                     println!("Note: Skill files at {:?} were not deleted.", skill_path);
                 } else {
@@ -249,13 +252,21 @@ pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
                 println!("Skill '{}' not found in index.", name);
             }
         }
+        SkillsCommand::List { .. } => println!("Skills list — coming soon"),
+        SkillsCommand::Check { .. } => println!("Skills check — coming soon"),
+        SkillsCommand::Update { .. } => println!("Skills update — coming soon"),
+        SkillsCommand::Audit { .. } => println!("Skills audit — coming soon"),
+        SkillsCommand::Publish { .. } => println!("Skills publish — coming soon"),
+        SkillsCommand::Snapshot(_) => println!("Skills snapshot — coming soon"),
+        SkillsCommand::Tap(_) => println!("Skills tap — coming soon"),
+        SkillsCommand::Config => println!("Skills config — coming soon"),
     }
     Ok(())
 }
 
 pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
     match cmd {
-        GatewayCommand::Run { platform } => {
+        GatewayCommand::Run { platform, .. } => {
             info!("running gateway: {:?}", platform);
             if gateway_mod::is_gateway_running() {
                 println!("Gateway is already running.");
@@ -293,7 +304,7 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
             println!("Gateway started (PID: {})", std::process::id());
             println!("View status with: hermes gateway status");
         }
-        GatewayCommand::Start => {
+        GatewayCommand::Start { .. } => {
             info!("starting gateway service");
             if gateway_mod::is_gateway_running() {
                 println!("Gateway is already running.");
@@ -327,7 +338,7 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
             }
             println!("Gateway started.");
         }
-        GatewayCommand::Stop => {
+        GatewayCommand::Stop { .. } => {
             info!("stopping gateway service");
 
             // Try Windows service first
@@ -373,7 +384,7 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
 
             println!("Gateway stopped.");
         }
-        GatewayCommand::Status => {
+        GatewayCommand::Status { .. } => {
             info!("checking gateway status");
             println!("Hermes Gateway Status");
             println!("====================");
@@ -438,13 +449,16 @@ pub async fn handle_gateway(cmd: GatewayCommand) -> Result<()> {
             println!("  2. API keys configured via 'hermes auth add'");
             println!("  3. Platform-specific setup via 'hermes gateway setup <platform>'");
         }
+        GatewayCommand::Restart { .. } => println!("Gateway restart — coming soon"),
+        GatewayCommand::Install { .. } => println!("Gateway install — coming soon"),
+        GatewayCommand::Uninstall { .. } => println!("Gateway uninstall — coming soon"),
     }
     Ok(())
 }
 
 pub async fn handle_cron(cmd: CronCommand) -> Result<()> {
     match cmd {
-        CronCommand::List => {
+        CronCommand::List { .. } => {
             info!("listing cron jobs");
             println!("Hermes Cron Jobs");
             println!("================");
@@ -485,18 +499,10 @@ pub async fn handle_cron(cmd: CronCommand) -> Result<()> {
                 println!("Start it with: hermes gateway run");
             }
         }
-        CronCommand::Add { schedule, command } => {
-            info!("adding cron job: {} -> {}", schedule, command);
-
-            // Validate schedule
-            match cron_mod::parse_schedule(&schedule) {
-                Ok(_) => {}
-                Err(e) => {
-                    anyhow::bail!("Invalid schedule '{}': {}", schedule, e);
-                }
-            }
-
-            match cron_mod::create_job(command, schedule) {
+CronCommand::Add { schedule, command, .. } => {
+            info!("adding cron job: {} -> {:?}", schedule, command);
+            let prompt = command.unwrap_or_else(|| schedule.clone());
+            match cron_mod::create_job(prompt, schedule) {
                 Ok(job) => {
                     println!("Cron job created successfully!");
                     println!("  ID:       {}", job.id);
@@ -584,6 +590,9 @@ pub async fn handle_cron(cmd: CronCommand) -> Result<()> {
                 println!("Start it with: hermes gateway run");
             }
         }
+        CronCommand::Edit { .. } => println!("Cron edit — coming soon"),
+        CronCommand::Run { .. } => println!("Cron run — coming soon"),
+        CronCommand::Tick => println!("Cron tick — coming soon"),
     }
     Ok(())
 }
@@ -638,6 +647,16 @@ pub fn handle_config(cmd: ConfigCommand) -> Result<()> {
             config.save()?;
             println!("Config reset to defaults");
         }
+        ConfigCommand::Edit => println!("Config edit — coming soon"),
+        ConfigCommand::Path => {
+            println!("{:?}", Config::config_path());
+        }
+        ConfigCommand::EnvPath => {
+            let home = Config::hermes_home();
+            println!("{:?}", home.join(".env"));
+        }
+        ConfigCommand::Check => println!("Config check — coming soon"),
+        ConfigCommand::Migrate => println!("Config migrate — coming soon"),
     }
     Ok(())
 }
@@ -1006,4 +1025,93 @@ pub fn handle_uninstall() -> Result<()> {
     println!("  https://github.com/nousresearch/hermes-agent/releases");
 
     Ok(())
+}
+
+// ── Stub handlers for new commands ──────────────────────────────────────────
+
+pub fn handle_sessions(cmd: SessionsCommand) {
+    match cmd {
+        SessionsCommand::List { source, limit } => println!("Sessions list (source={:?}, limit={}) — coming soon", source, limit),
+        SessionsCommand::Export { output, source, session_id } => println!("Sessions export to '{}' — coming soon", output),
+        SessionsCommand::Delete { session_id, yes } => println!("Sessions delete '{}' (yes={}) — coming soon", session_id, yes),
+        SessionsCommand::Prune { older_than, source, yes } => println!("Sessions prune (older_than={} days) — coming soon", older_than),
+        SessionsCommand::Stats => println!("Sessions stats — coming soon"),
+        SessionsCommand::Rename { session_id, title } => println!("Sessions rename '{}' to '{}' — coming soon", session_id, title.join(" ")),
+        SessionsCommand::Browse { source, limit } => println!("Sessions browse — coming soon"),
+    }
+}
+
+pub fn handle_profile(cmd: ProfileCommand) {
+    match cmd {
+        ProfileCommand::List => println!("Profile list — coming soon"),
+        ProfileCommand::Use { profile_name } => println!("Profile use '{}' — coming soon", profile_name),
+        ProfileCommand::Create { profile_name, clone, .. } => println!("Profile create '{}' (clone={}) — coming soon", profile_name, clone),
+        ProfileCommand::Delete { profile_name, yes } => println!("Profile delete '{}' (yes={}) — coming soon", profile_name, yes),
+        ProfileCommand::Show { profile_name } => println!("Profile show '{}' — coming soon", profile_name),
+        ProfileCommand::Alias { profile_name, remove, .. } => println!("Profile alias '{}' (remove={}) — coming soon", profile_name, remove),
+        ProfileCommand::Rename { old_name, new_name } => println!("Profile rename '{}' -> '{}' — coming soon", old_name, new_name),
+        ProfileCommand::Export { profile_name, .. } => println!("Profile export '{}' — coming soon", profile_name),
+        ProfileCommand::Import { archive, .. } => println!("Profile import '{}' — coming soon", archive),
+    }
+}
+
+pub fn handle_mcp(cmd: McpCommand) {
+    match cmd {
+        McpCommand::Serve { verbose } => println!("MCP serve (verbose={}) — coming soon", verbose),
+        McpCommand::Add { name, url, .. } => println!("MCP add '{}' (url={:?}) — coming soon", name, url),
+        McpCommand::Remove { name } => println!("MCP remove '{}' — coming soon", name),
+        McpCommand::List => println!("MCP list — coming soon"),
+        McpCommand::Test { name } => println!("MCP test '{}' — coming soon", name),
+        McpCommand::Configure { name } => println!("MCP configure '{}' — coming soon", name),
+    }
+}
+
+pub fn handle_memory(cmd: MemoryCommand) {
+    match cmd {
+        MemoryCommand::Setup => println!("Memory setup — coming soon"),
+        MemoryCommand::Status => println!("Memory status — coming soon"),
+        MemoryCommand::Off => println!("Memory off — coming soon"),
+    }
+}
+
+pub fn handle_webhook(cmd: WebhookCommand) {
+    match cmd {
+        WebhookCommand::Subscribe { name, .. } => println!("Webhook subscribe '{}' — coming soon", name),
+        WebhookCommand::List => println!("Webhook list — coming soon"),
+        WebhookCommand::Remove { name } => println!("Webhook remove '{}' — coming soon", name),
+        WebhookCommand::Test { name, .. } => println!("Webhook test '{}' — coming soon", name),
+    }
+}
+
+pub fn handle_pairing(cmd: PairingCommand) {
+    match cmd {
+        PairingCommand::List => println!("Pairing list — coming soon"),
+        PairingCommand::Approve { platform, code } => println!("Pairing approve '{}' '{}' — coming soon", platform, code),
+        PairingCommand::Revoke { platform, user_id } => println!("Pairing revoke '{}' '{}' — coming soon", platform, user_id),
+        PairingCommand::ClearPending => println!("Pairing clear-pending — coming soon"),
+    }
+}
+
+pub fn handle_plugins(cmd: PluginsCommand) {
+    match cmd {
+        PluginsCommand::Install { identifier, force } => println!("Plugins install '{}' (force={}) — coming soon", identifier, force),
+        PluginsCommand::Update { name } => println!("Plugins update '{}' — coming soon", name),
+        PluginsCommand::Remove { name } => println!("Plugins remove '{}' — coming soon", name),
+        PluginsCommand::List => println!("Plugins list — coming soon"),
+        PluginsCommand::Enable { name } => println!("Plugins enable '{}' — coming soon", name),
+        PluginsCommand::Disable { name } => println!("Plugins disable '{}' — coming soon", name),
+    }
+}
+
+pub fn handle_debug(cmd: DebugCommand) {
+    match cmd {
+        DebugCommand::Share { lines, expire, local } => println!("Debug share (lines={}, expire={}d, local={}) — coming soon", lines, expire, local),
+    }
+}
+
+pub fn handle_claw(cmd: ClawCommand) {
+    match cmd {
+        ClawCommand::Migrate { source, dry_run, .. } => println!("Claw migrate (source={:?}, dry_run={}) — coming soon", source, dry_run),
+        ClawCommand::Cleanup { source, dry_run, .. } => println!("Claw cleanup (source={:?}, dry_run={}) — coming soon", source, dry_run),
+    }
 }
