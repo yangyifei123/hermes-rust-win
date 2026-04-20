@@ -4,10 +4,12 @@ members = [
     "crates/common",
     "crates/cli-core",
     "crates/cli",
+    "crates/session-db",
+    "crates/runtime",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.14.19"
 edition = "2021"
 rust-version = "1.75"
 authors = ["Nous Research"]
@@ -17,6 +19,7 @@ license = "MIT"
 # Internal crates
 hermes-common = { path = "crates/common" }
 hermes-cli-core = { path = "crates/cli-core" }
+hermes-session-db = { path = "crates/session-db" }
 
 # CLI
 clap = { version = "4.5", features = ["derive", "cargo", "env", "unicode", "wrap_help"] }
@@ -42,7 +45,7 @@ thiserror = "2.0"
 # Utils
 directories = "5.0"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v7", "v4"] }
+uuid = { version = "1.0", features = ["v7", "v4", "serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

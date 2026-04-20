@@ -1,0 +1,22 @@
+[package]
+name = "hermes-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+hermes-common = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
+futures = { workspace = true }
+# async-trait removed - using Rust 1.75+ native async fn in traits
+regex = "1.11"
+tempfile = "3.20"

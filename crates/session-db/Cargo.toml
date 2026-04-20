@@ -1,0 +1,17 @@
+﻿[package]
+name = "hermes-session-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+hermes-common = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled", "chrono", "uuid", "serde_json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
