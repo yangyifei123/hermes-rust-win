@@ -17,23 +17,26 @@ pub struct ChatMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Anthropic/OpenRouter prompt caching control block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<serde_json::Value>,
 }
 
 impl ChatMessage {
     pub fn user(content: &str) -> Self {
-        Self { role: "user".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+        Self { role: "user".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
     }
     pub fn assistant(content: &str) -> Self {
-        Self { role: "assistant".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+        Self { role: "assistant".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
     }
     pub fn assistant_with_tool_calls(tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".to_string(), content: None, tool_calls: Some(tool_calls), tool_call_id: None }
+        Self { role: "assistant".to_string(), content: None, tool_calls: Some(tool_calls), tool_call_id: None, cache_control: None }
     }
     pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
-        Self { role: "tool".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: Some(tool_call_id.to_string()) }
+        Self { role: "tool".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: Some(tool_call_id.to_string()), cache_control: None }
     }
     pub fn system(content: &str) -> Self {
-        Self { role: "system".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+        Self { role: "system".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
     }
 
     /// Get text content, defaulting to empty string
@@ -136,6 +139,7 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
 
 pub mod openai;
 pub mod anthropic;
+pub mod caching;
 
 pub use openai::OpenAiProvider;
 pub use anthropic::AnthropicProvider;

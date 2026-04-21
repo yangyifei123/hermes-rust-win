@@ -67,7 +67,13 @@ impl ToolRegistry {
 
     pub async fn dispatch(&self, name: &str, params: Value) -> Result<ToolOutput, RuntimeError> {
         match self.get(name) {
-            Some(tool) => tool.execute(params).await,
+            Some(tool) => {
+                // Coerce string arguments to correct types based on schema
+                let schema = tool.parameters_schema();
+                let mut coerced_params = params;
+                coercion::coerce_args(&schema, &mut coerced_params);
+                tool.execute(coerced_params).await
+            }
             None => Err(RuntimeError::NotFound(format!("tool '{}' not found", name))),
         }
     }
@@ -82,3 +88,4 @@ pub mod file;
 pub mod web;
 pub mod mcp;
 pub mod browser;
+pub mod coercion;
