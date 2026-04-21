@@ -55,6 +55,14 @@ impl PlatformAdapter for WechatAdapter {
     }
 }
 
+/// AES-128-ECB encryption stub for WeChat message encryption.
+/// Actual implementation requires the 'aes' crate dependency.
+pub fn aes128_ecb_encrypt(_plaintext: &[u8], _key: &[u8]) -> Result<Vec<u8>, RuntimeError> {
+    Err(RuntimeError::AgentError {
+        message: "AES encryption not yet implemented - add 'aes' crate dependency".into(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +91,14 @@ mod tests {
         let result = adapter.start().await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not yet implemented"));
+    }
+
+    #[test]
+    fn test_aes128_ecb_encrypt_stub_returns_error() {
+        let result = aes128_ecb_encrypt(b"plaintext", b"0123456789abcdef");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("AES encryption not yet implemented"));
+        assert!(msg.contains("'aes' crate dependency"));
     }
 }
