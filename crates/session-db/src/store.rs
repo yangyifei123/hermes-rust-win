@@ -5,6 +5,42 @@ use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 use uuid::Uuid;
 
+const WRITE_MAX_RETRIES: u32 = 15;
+const WRITE_RETRY_MIN_MS: u64 = 20;
+const WRITE_RETRY_MAX_MS: u64 = 150;
+
+fn execute_write_with_retry<T, F>(conn: &Connection, f: F) -> Result<T>
+where
+    F: Fn(&Connection) -> Result<T>,
+{
+    for attempt in 0..WRITE_MAX_RETRIES {
+        let begin = conn.execute("BEGIN IMMEDIATE", []);
+        if let Err(err) = begin {
+            let msg = err.to_string();
+            if (msg.contains("locked") || msg.contains("busy")) && attempt < WRITE_MAX_RETRIES - 1 {
+                let jitter = WRITE_RETRY_MIN_MS
+                    + rand::random::<u64>() % (WRITE_RETRY_MAX_MS - WRITE_RETRY_MIN_MS);
+                std::thread::sleep(std::time::Duration::from_millis(jitter));
+                continue;
+            }
+            return Err(SessionError::DatabaseError(msg));
+        }
+
+        let result = f(conn);
+        if let Err(ref e) = result {
+            let _ = conn.execute("ROLLBACK", []);
+            return Err(SessionError::DatabaseError(e.to_string()));
+        }
+        if let Err(err) = conn.execute("COMMIT", []) {
+            return Err(SessionError::DatabaseError(err.to_string()));
+        }
+        return result;
+    }
+    Err(SessionError::DatabaseError(
+        "database locked after max retries".into(),
+    ))
+}
+
 pub struct SessionStore {
     conn: Connection,
 }
@@ -72,8 +108,9 @@ impl SessionStore {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        self.conn
-            .execute(
+
+        execute_write_with_retry(&self.conn, |conn| {
+            conn.execute(
                 "INSERT INTO sessions (id, source, model, system_prompt, parent_session_id, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 (
@@ -87,7 +124,8 @@ impl SessionStore {
                 ),
             )
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
-        Ok(session)
+            Ok(session.clone())
+        })
     }
 
     pub fn get_session(&self, id: &Uuid) -> Result<Option<Session>> {
@@ -160,8 +198,8 @@ impl SessionStore {
             created_at: Utc::now(),
         };
 
-        self.conn
-            .execute(
+        execute_write_with_retry(&self.conn, |conn| {
+            conn.execute(
                 "INSERT INTO messages (id, session_id, role, content, tool_calls, tool_name, reasoning, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 (
@@ -177,13 +215,15 @@ impl SessionStore {
             )
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
 
-        // Update session timestamp
-        self.conn
-            .execute(
+            // Update session timestamp
+            conn.execute(
                 "UPDATE sessions SET updated_at = ?1 WHERE id = ?2",
                 (Utc::now().to_rfc3339(), session_id.to_string()),
             )
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+
+            Ok(())
+        })?;
 
         Ok(msg)
     }
@@ -222,16 +262,14 @@ impl SessionStore {
     }
 
     pub fn delete_session(&self, id: &Uuid) -> Result<()> {
-        self.conn
-            .execute(
-                "DELETE FROM messages WHERE session_id = ?1",
-                [id.to_string()],
-            )
-            .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
-        self.conn
-            .execute("DELETE FROM sessions WHERE id = ?1", [id.to_string()])
-            .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
-        Ok(())
+        let id_str = id.to_string();
+        execute_write_with_retry(&self.conn, |conn| {
+            conn.execute("DELETE FROM messages WHERE session_id = ?1", [&id_str])
+                .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+            conn.execute("DELETE FROM sessions WHERE id = ?1", [&id_str])
+                .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+            Ok(())
+        })
     }
 }
 

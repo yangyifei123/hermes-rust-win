@@ -611,6 +611,8 @@ version = "1.14.19"
 dependencies = [
  "chrono",
  "hermes-common",
+ "rand",
+ "regex-lite",
  "rusqlite",
  "serde",
  "serde_json",

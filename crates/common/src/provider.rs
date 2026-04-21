@@ -6,7 +6,6 @@
 use crate::types::Provider;
 
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 /// API mode determining the request/response format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,9 +19,6 @@ pub enum ApiMode {
 }
 
 /// Lazy-initialized static mapping of URL hostnames to providers.
-/// Uses RwLock + once_cell pattern for MSRV 1.75 compatibility.
-static URL_TO_PROVIDER: RwLock<Option<HashMap<&'static str, Provider>>> = RwLock::new(None);
-
 fn get_url_to_provider() -> &'static HashMap<&'static str, Provider> {
     // Safety: we only write once and never drop the allocation.
     // Use a leaked Box to get a &'static reference.
@@ -77,9 +73,10 @@ pub fn detect_provider_from_url(base_url: &str) -> Option<Provider> {
 /// - All others default to `ChatCompletions`.
 pub fn detect_api_mode(base_url: &str, provider: Provider) -> ApiMode {
     let url_lower = base_url.to_lowercase();
-    if provider == Provider::Anthropic || url_lower.contains("api.anthropic.com") {
-        ApiMode::AnthropicMessages
-    } else if url_lower.ends_with("/anthropic") {
+    if provider == Provider::Anthropic
+        || url_lower.contains("api.anthropic.com")
+        || url_lower.ends_with("/anthropic")
+    {
         ApiMode::AnthropicMessages
     } else {
         ApiMode::ChatCompletions
