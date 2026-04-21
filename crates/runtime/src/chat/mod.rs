@@ -1,6 +1,6 @@
 //! Chat REPL - interactive and single-shot modes
 
-use crate::agent::{Agent, AgentConfig, AgentResponse};
+use crate::agent::{Agent, AgentResponse};
 use crate::RuntimeError;
 use hermes_session_db::MessageRole;
 use uuid::Uuid;
@@ -117,7 +117,7 @@ mod tests {
     use super::*;
     use crate::provider::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, LlmProvider, StreamChunk};
     use crate::tool::ToolRegistry;
-    use crate::RuntimeError;
+    use crate::{AgentConfig, RuntimeError};
     use futures::Stream;
     use hermes_session_db::SessionStore;
     use std::future::Future;

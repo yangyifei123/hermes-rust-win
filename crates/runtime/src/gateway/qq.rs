@@ -14,6 +14,7 @@ pub struct QqConfig {
 }
 
 pub struct QqAdapter {
+    #[allow(dead_code)]
     config: QqConfig,
 }
 

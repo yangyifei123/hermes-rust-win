@@ -3,7 +3,7 @@ use crate::RuntimeError;
 use regex::Regex;
 use serde_json::{json, Value};
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 
 /// Validate that a path is within CWD (security sandbox).

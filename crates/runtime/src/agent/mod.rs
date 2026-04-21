@@ -1,14 +1,15 @@
 //! Agent core loop - orchestrates LLM calls, tool dispatch, and session persistence
 
-use crate::provider::{ChatMessage, ChatRequest, ChatResponse, ChatChoice, LlmProvider};
+use crate::provider::{ChatMessage, ChatRequest, LlmProvider};
 use crate::tool::ToolRegistry;
 use crate::RuntimeError;
 use hermes_session_db::{SessionStore, Message, MessageRole};
 use serde_json::json;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
+
+pub mod budget;
+pub use budget::IterationBudget;
 
 /// Configuration for agent behavior
 #[derive(Debug, Clone)]
@@ -43,14 +44,16 @@ pub struct AgentResponse {
 pub struct Agent {
     provider: Box<dyn LlmProvider>,
     tools: Arc<ToolRegistry>,
+    #[allow(clippy::arc_with_non_send_sync)]
     session_store: Arc<SessionStore>,
     config: AgentConfig,
     model: String,
-    turn_counter: Arc<AtomicU32>,
+    budget: Arc<IterationBudget>,
 }
 
 impl Agent {
     /// Create a new agent with the given provider, tools, and session store
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn new(
         provider: Box<dyn LlmProvider>,
         tools: ToolRegistry,
@@ -58,19 +61,20 @@ impl Agent {
         config: AgentConfig,
         model: String,
     ) -> Self {
+        let budget = Arc::new(IterationBudget::new(config.max_turns));
         Self {
             provider,
             tools: Arc::new(tools),
             session_store: Arc::new(session_store),
             config,
             model,
-            turn_counter: Arc::new(AtomicU32::new(0)),
+            budget,
         }
     }
 
     /// Get the current turn count
     pub fn turns_used(&self) -> u32 {
-        self.turn_counter.load(Ordering::Relaxed)
+        self.budget.used()
     }
 
     /// Create a new session for this conversation
@@ -171,7 +175,7 @@ impl Agent {
 
         // Main agent loop
         loop {
-            let turns = self.turn_counter.load(Ordering::Relaxed);
+            let turns = self.budget.used();
             if turns >= self.config.max_turns {
                 return Ok(AgentResponse {
                     content: format!(
@@ -211,7 +215,8 @@ impl Agent {
                 duration_secs: self.config.timeout_secs,
             })??;
 
-            self.turn_counter.fetch_add(1, Ordering::Relaxed);
+            // Consume one iteration slot
+            self.budget.consume();
 
             // Process response
             if let Some(choice) = response.choices.first() {
@@ -252,7 +257,7 @@ impl Agent {
                             // Store tool result with tool_call_id in tool_name field
                             let store = self.session_store.clone();
                             let sid = session_id;
-                            let tc_id = tc.id.clone();
+                            let _tc_id = tc.id.clone();
                             let result_content = if tool_result.is_error {
                                 format!("Error: {}", tool_result.content)
                             } else {
@@ -277,7 +282,7 @@ impl Agent {
                 return Ok(AgentResponse {
                     content: current_content,
                     tool_calls_made,
-                    turns_used: self.turn_counter.load(Ordering::Relaxed),
+                    turns_used: self.budget.used(),
                     session_id,
                 });
             }
@@ -305,7 +310,7 @@ impl Agent {
 
     /// Reset turn counter for new conversation
     pub fn reset_turns(&self) {
-        self.turn_counter.store(0, Ordering::Relaxed);
+        self.budget.reset();
     }
 
     /// Get session messages for display/history
@@ -328,7 +333,7 @@ mod tests {
     use serde_json::json;
     use std::future::Future;
     use std::pin::Pin;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
 
     // Mock provider that returns canned responses
     struct MockProvider {

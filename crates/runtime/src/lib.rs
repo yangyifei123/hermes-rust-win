@@ -6,6 +6,6 @@ pub mod chat;
 pub mod gateway;
 
 pub use error::RuntimeError;
-pub use agent::{Agent, AgentConfig, AgentResponse};
+pub use agent::{Agent, AgentConfig, AgentResponse, IterationBudget};
 pub use chat::ChatRepl;
 pub use gateway::{Platform, PlatformAdapter};

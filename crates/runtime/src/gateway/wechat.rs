@@ -15,6 +15,7 @@ pub struct WechatConfig {
 }
 
 pub struct WechatAdapter {
+    #[allow(dead_code)]
     config: WechatConfig,
 }
 

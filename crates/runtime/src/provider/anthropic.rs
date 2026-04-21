@@ -1,4 +1,4 @@
-use crate::provider::{ChatRequest, ChatResponse, ChatMessage, LlmProvider, StreamChunk};
+use crate::provider::{ChatRequest, ChatResponse, LlmProvider, StreamChunk};
 use crate::RuntimeError;
 use futures::Stream;
 use reqwest::Client;

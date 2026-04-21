@@ -14,6 +14,12 @@ impl TerminalTool {
     }
 }
 
+impl Default for TerminalTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tool for TerminalTool {
     fn name(&self) -> &str {
         "terminal"

@@ -33,3 +33,10 @@ node_modules/
 vendor/
 hermes_home/
 *.crash
+
+# Hermes data (local config, sessions)
+.hermes/
+
+# IDE
+.vscode/
+.idea/

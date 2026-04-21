@@ -43,7 +43,7 @@ impl ChatMessage {
 
     /// Check if this message has tool calls
     pub fn has_tool_calls(&self) -> bool {
-        self.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+        self.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty())
     }
 }
 
@@ -110,6 +110,7 @@ pub struct DeltaMessage {
 // Provider trait
 // =============================================================================
 
+#[allow(clippy::type_complexity)]
 pub trait LlmProvider: Send + Sync {
     fn chat_completion(&self, request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>>;
     fn chat_completion_stream(&self, request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>>;
