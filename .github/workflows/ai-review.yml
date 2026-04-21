@@ -10,6 +10,9 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   ai-review:
     runs-on: ubuntu-latest
@@ -155,9 +158,10 @@ jobs:
           echo "$REVIEW_BODY" > /tmp/review_body.md
 
       - name: Post Review Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           REVIEW_BODY=$(cat /tmp/review_body.md)
-          
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gh pr comment "${{ github.event.pull_request.number }}" --body "$REVIEW_BODY"
           fi
