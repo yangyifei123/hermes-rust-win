@@ -321,6 +321,16 @@ impl Agent {
                 source: Box::new(e),
             })
     }
+
+    /// Get current model name
+    pub fn model_name(&self) -> &str {
+        &self.model
+    }
+
+    /// List available tools
+    pub fn list_tools(&self) -> Vec<(&str, &str)> {
+        self.tools.list()
+    }
 }
 
 #[cfg(test)]

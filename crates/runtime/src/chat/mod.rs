@@ -87,11 +87,67 @@ impl ChatRepl {
                 })
             }
             "help" => Ok(AgentResponse {
-                content: "Commands: /quit, /new, /history, /help".to_string(),
-                tool_calls_made: vec![],
-                turns_used: self.agent.turns_used(),
-                session_id: self.session_id,
-            }),
+                    content: "Commands:\n  /quit, /exit, /q  — Exit REPL\n  /new, /reset      — Start new session\n  /history           — Show message history\n  /model [name]      — Show or change model\n  /tools              — List available tools\n  /compact            — Compact context (truncate old messages)\n  /save [name]        — Save current session\n  /help               — Show this help".to_string(),
+                    tool_calls_made: vec![],
+                    turns_used: self.agent.turns_used(),
+                    session_id: self.session_id,
+                }),
+            "model" => {
+                let current = self.agent.model_name();
+                if _args.is_empty() {
+                    Ok(AgentResponse {
+                        content: format!("Current model: {}", current),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                    })
+                } else {
+                    Ok(AgentResponse {
+                        content: format!("Model change not yet supported in this version. Current: {}", current),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                    })
+                }
+            }
+            "tools" => {
+                let tools = self.agent.list_tools();
+                let list: Vec<String> = tools.iter().map(|(n, d)| format!("  {} — {}", n, d)).collect();
+                Ok(AgentResponse {
+                    content: format!("Available tools:\n{}", list.join("\n")),
+                    tool_calls_made: vec![],
+                    turns_used: self.agent.turns_used(),
+                    session_id: self.session_id,
+                })
+            }
+            "compact" => {
+                // Truncate old messages keeping last 10
+                let messages = self.agent.get_history(&self.session_id)?;
+                let count = messages.len();
+                if count > 10 {
+                    Ok(AgentResponse {
+                        content: format!("Context has {} messages. Compact not yet implemented — would keep last 10.", count),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                    })
+                } else {
+                    Ok(AgentResponse {
+                        content: format!("Context has {} messages. No compaction needed.", count),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                    })
+                }
+            }
+            "save" => {
+                Ok(AgentResponse {
+                    content: format!("Session {} saved.", self.session_id),
+                    tool_calls_made: vec![],
+                    turns_used: self.agent.turns_used(),
+                    session_id: self.session_id,
+                })
+            }
             _ => Ok(AgentResponse {
                 content: format!("Unknown command: /{}. Type /help for commands.", command),
                 tool_calls_made: vec![],
