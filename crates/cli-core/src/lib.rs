@@ -914,7 +914,9 @@ pub async fn run() -> Result<()> {
     });
 
     match &command {
-        Commands::Chat { .. } => { info!("chat mode not yet implemented"); println!("Chat mode coming soon!"); }
+        Commands::Chat { model, query, system, provider, max_turns, yolo, quiet, .. } => {
+            handle_chat(model.clone(), query.clone(), system.clone(), provider.clone(), *max_turns, *yolo, *quiet).await?;
+        }
         Commands::Auth(ref cmd) => commands::handle_auth(cmd.clone()).await?,
         Commands::Model { current, global, model, portal_url: _, inference_url: _, client_id: _, scope: _, no_browser: _, timeout: _, ca_bundle: _, insecure: _ } =>
             commands::handle_model(*current, *global, model.as_deref())?,
@@ -962,6 +964,132 @@ fn init_logging(verbose: bool, debug: bool) {
         .with_env_filter(EnvFilter::from_default_env().add_directive(level.into()))
         .with_target(false)
         .init();
+}
+
+/// Handle the `hermes chat` command — wire CLI to runtime
+async fn handle_chat(
+    model: Option<String>,
+    query: Option<String>,
+    system: Option<String>,
+    provider: Option<String>,
+    max_turns: Option<u32>,
+    yolo: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
+    use hermes_runtime::{Agent, AgentConfig, ChatRepl};
+    use hermes_runtime::provider::{LlmProvider, create_provider};
+    use hermes_runtime::tool::{ToolRegistry, terminal::TerminalTool, file::{FileReadTool, FileWriteTool, FileSearchTool}, web::WebSearchTool, mcp::McpTool, browser::BrowserTool};
+    use hermes_session_db::SessionStore;
+    use hermes_common::Provider;
+
+    // Resolve provider and API key
+    let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
+    let provider_str = provider.as_deref().unwrap_or("openai");
+    let provider_type = hermes_common::Provider::from_str(provider_str)
+        .unwrap_or(hermes_common::Provider::OpenAI);
+    
+    let api_key = auth_store.get(provider_str)
+        .map(|c| c.api_key.clone())
+        .or_else(|| std::env::var(format!("{}_API_KEY", provider_str.to_uppercase())).ok())
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
+
+    let api_key = match api_key {
+        Some(key) if !key.is_empty() => key,
+        _ => {
+            anyhow::bail!(
+                "No API key configured for '{}'. Run: hermes auth add {} --api-key <KEY>",
+                provider_str, provider_str
+            );
+        }
+    };
+
+    // Resolve model
+    let model = model.unwrap_or_else(|| {
+        create_provider(&provider_type, &api_key, None).default_model().to_string()
+    });
+
+    // Create provider
+    let provider_box = create_provider(&provider_type, &api_key, None);
+
+    // Create tool registry
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(TerminalTool::new()));
+    registry.register(Box::new(FileReadTool));
+    registry.register(Box::new(FileWriteTool));
+    registry.register(Box::new(FileSearchTool));
+    registry.register(Box::new(WebSearchTool));
+    registry.register(Box::new(McpTool));
+    registry.register(Box::new(BrowserTool));
+
+    // Create session store
+    let home = directories::ProjectDirs::from("com", "nousresearch", "hermes")
+        .map(|d| d.data_dir().to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from(".hermes"));
+    let db_path = home.join("sessions.db");
+    let session_store = SessionStore::new(&db_path)
+        .map_err(|e| anyhow::anyhow!("Failed to open session DB: {}", e))?;
+
+    // Create agent config
+    let config = AgentConfig {
+        max_turns: max_turns.unwrap_or(30),
+        system_prompt: system.unwrap_or_default(),
+        timeout_secs: 120,
+        yolo,
+    };
+
+    // Create agent
+    let agent = Agent::new(provider_box, registry, session_store, config, model.clone());
+
+    if let Some(q) = query {
+        // Single-shot mode
+        let response = ChatRepl::run_query(agent, &q).await
+            .map_err(|e| anyhow::anyhow!("Query failed: {}", e))?;
+        println!("{}", response);
+    } else {
+        // Interactive REPL mode
+        if !quiet {
+            println!("Hermes Agent v{} — model: {}", env!("CARGO_PKG_VERSION"), model);
+            println!("Type /help for commands, /quit to exit");
+            println!();
+        }
+
+        let mut repl = ChatRepl::new(agent)
+            .map_err(|e| anyhow::anyhow!("Failed to create REPL: {}", e))?;
+
+        // Simple REPL loop using stdin
+        use std::io::{self, Write};
+        loop {
+            if !quiet {
+                print!("> ");
+                io::stdout().flush()?;
+            }
+            let mut input = String::new();
+            match io::stdin().read_line(&mut input) {
+                Ok(0) => break, // EOF
+                Ok(_) => {}
+                Err(e) => anyhow::bail!("Input error: {}", e),
+            }
+
+            let input = input.trim();
+            if input.is_empty() {
+                continue;
+            }
+
+            match repl.run_turn(input).await {
+                Ok(response) => println!("{}", response.content),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("REPL exited") {
+                        println!("Goodbye!");
+                        break;
+                    }
+                    eprintln!("Error: {}", msg);
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
