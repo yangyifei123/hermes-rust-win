@@ -980,14 +980,19 @@ async fn handle_chat(
     use hermes_runtime::provider::{LlmProvider, create_provider};
     use hermes_runtime::tool::{ToolRegistry, terminal::TerminalTool, file::{FileReadTool, FileWriteTool, FileSearchTool}, web::WebSearchTool, mcp::McpTool, browser::BrowserTool};
     use hermes_session_db::SessionStore;
-    use hermes_common::Provider;
 
-    // Resolve provider and API key
-    let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
-    let provider_str = provider.as_deref().unwrap_or("openai");
+    // Load user config (config.yaml)
+    let user_config = crate::config::Config::load().unwrap_or_default();
+
+    // Resolve provider: CLI flag > config > default
+    let provider_str = provider.as_deref()
+        .or_else(|| if user_config.model.provider.is_empty() { None } else { Some(&user_config.model.provider) })
+        .unwrap_or("openai");
     let provider_type = hermes_common::Provider::from_str(provider_str)
         .unwrap_or(hermes_common::Provider::OpenAI);
-    
+
+    // Resolve API key: auth store > env var
+    let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
     let api_key = auth_store.get(provider_str)
         .map(|c| c.api_key.clone())
         .or_else(|| std::env::var(format!("{}_API_KEY", provider_str.to_uppercase())).ok())
@@ -1003,13 +1008,14 @@ async fn handle_chat(
         }
     };
 
-    // Resolve model
+    // Resolve model: CLI flag > config > provider default
+    let base_url = if user_config.model.base_url.is_empty() { None } else { Some(user_config.model.base_url.as_str()) };
     let model = model.unwrap_or_else(|| {
-        create_provider(&provider_type, &api_key, None).default_model().to_string()
+        if !user_config.model.default.is_empty() { user_config.model.default.clone() }
+        else { create_provider(&provider_type, &api_key, base_url).default_model().to_string() }
     });
 
-    // Create provider
-    let provider_box = create_provider(&provider_type, &api_key, None);
+    let provider_box = create_provider(&provider_type, &api_key, base_url);
 
     // Create tool registry
     let mut registry = ToolRegistry::new();
@@ -1021,24 +1027,22 @@ async fn handle_chat(
     registry.register(Box::new(McpTool));
     registry.register(Box::new(BrowserTool));
 
-    // Create session store
-    let home = directories::ProjectDirs::from("com", "nousresearch", "hermes")
-        .map(|d| d.data_dir().to_path_buf())
-        .unwrap_or_else(|| std::path::PathBuf::from(".hermes"));
+    // Create session store using HERMES_HOME
+    let home = crate::config::Config::hermes_home();
     let db_path = home.join("sessions.db");
     let session_store = SessionStore::new(&db_path)
         .map_err(|e| anyhow::anyhow!("Failed to open session DB: {}", e))?;
 
-    // Create agent config
-    let config = AgentConfig {
-        max_turns: max_turns.unwrap_or(30),
-        system_prompt: system.unwrap_or_default(),
-        timeout_secs: 120,
+    // Create agent config: CLI flags override config.yaml
+    let agent_config = AgentConfig {
+        max_turns: max_turns.unwrap_or(user_config.agent.max_turns),
+        system_prompt: system.unwrap_or_else(|| user_config.agent.system_prompt.clone()),
+        timeout_secs: user_config.terminal.timeout,
         yolo,
     };
 
     // Create agent
-    let agent = Agent::new(provider_box, registry, session_store, config, model.clone());
+    let agent = Agent::new(provider_box, registry, session_store, agent_config, model.clone());
 
     if let Some(q) = query {
         // Single-shot mode

@@ -144,10 +144,7 @@ mod tests {
             Box::pin(async move {
                 Ok(ChatResponse {
                     choices: vec![ChatChoice {
-                        message: ChatMessage {
-                            role: "assistant".to_string(),
-                            content,
-                        },
+                        message: ChatMessage::assistant(&content),
                         finish_reason: Some("stop".to_string()),
                     }],
                 })

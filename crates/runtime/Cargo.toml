@@ -20,4 +20,3 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 futures = { workspace = true }
 # async-trait removed - using Rust 1.75+ native async fn in traits
 regex = "1.11"
-tempfile = "3.20"

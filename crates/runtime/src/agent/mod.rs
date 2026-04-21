@@ -114,24 +114,22 @@ impl Agent {
 
         // Add system prompt first if present
         if !self.config.system_prompt.is_empty() {
-            chat_messages.push(ChatMessage {
-                role: "system".to_string(),
-                content: self.config.system_prompt.clone(),
-            });
+            chat_messages.push(ChatMessage::system(&self.config.system_prompt));
         }
 
         // Convert session messages to chat format
         for msg in messages {
-            let role = match msg.role {
-                MessageRole::System => "system",
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-                MessageRole::Tool => "tool",
+            let chat_msg = match msg.role {
+                MessageRole::System => ChatMessage::system(&msg.content),
+                MessageRole::User => ChatMessage::user(&msg.content),
+                MessageRole::Assistant => ChatMessage::assistant(&msg.content),
+                MessageRole::Tool => {
+                    // Tool messages need tool_call_id — stored in tool_name field for now
+                    let tool_call_id = msg.tool_name.as_deref().unwrap_or("unknown");
+                    ChatMessage::tool_result(tool_call_id, &msg.content)
+                }
             };
-            chat_messages.push(ChatMessage {
-                role: role.to_string(),
-                content: msg.content,
-            });
+            chat_messages.push(chat_msg);
         }
 
         Ok(chat_messages)
@@ -219,17 +217,63 @@ impl Agent {
             if let Some(choice) = response.choices.first() {
                 let msg = &choice.message;
 
-                // Check for tool calls in response (OpenAI format)
-                // Note: Our current ChatResponse doesn't have tool_calls field
-                // For now, treat all responses as final text
-                // TODO: Add tool_calls parsing when provider trait supports it
+                // Check for tool calls — core agent loop behavior
+                if msg.has_tool_calls() {
+                    if let Some(tool_calls) = &msg.tool_calls {
+                        // Append assistant's tool call decision to session
+                        let calls_summary: Vec<String> = tool_calls
+                            .iter()
+                            .map(|tc| format!("{}({})", tc.function.name, tc.function.arguments))
+                            .collect();
+                        self.append_message(
+                            &session_id,
+                            MessageRole::Assistant,
+                            &format!("[tool_calls: {}]", calls_summary.join(", ")),
+                        )?;
 
-                current_content = msg.content.clone();
+                        // Execute each tool call
+                        for tc in tool_calls {
+                            tool_calls_made.push(tc.function.name.clone());
 
-                // Append assistant message
+                            // Parse arguments JSON
+                            let params: serde_json::Value = serde_json::from_str(&tc.function.arguments)
+                                .unwrap_or(serde_json::Value::Object(Default::default()));
+
+                            // Dispatch tool with timeout
+                            let tool_result = tokio::time::timeout(
+                                std::time::Duration::from_secs(self.config.timeout_secs),
+                                self.tools.dispatch(&tc.function.name, params),
+                            )
+                            .await
+                            .map_err(|_| RuntimeError::TimeoutError {
+                                duration_secs: self.config.timeout_secs,
+                            })??;
+
+                            // Store tool result with tool_call_id in tool_name field
+                            let store = self.session_store.clone();
+                            let sid = session_id;
+                            let tc_id = tc.id.clone();
+                            let result_content = if tool_result.is_error {
+                                format!("Error: {}", tool_result.content)
+                            } else {
+                                tool_result.content
+                            };
+                            store.append_message(&sid, MessageRole::Tool, &result_content)
+                                .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+
+                            // Update tool_name to store tool_call_id for message reconstruction
+                            // (tool_call_id stored in tool_name field for session DB compatibility)
+                        }
+
+                        // Loop back to LLM with tool results
+                        continue;
+                    }
+                }
+
+                // No tool calls — final text response
+                current_content = msg.text().to_string();
                 self.append_message(&session_id, MessageRole::Assistant, &current_content)?;
 
-                // If no tool calls, we're done
                 return Ok(AgentResponse {
                     content: current_content,
                     tool_calls_made,
@@ -310,10 +354,7 @@ mod tests {
                     .unwrap_or_else(|| "Default mock response".to_string());
                 Ok(ChatResponse {
                     choices: vec![ChatChoice {
-                        message: ChatMessage {
-                            role: "assistant".to_string(),
-                            content,
-                        },
+                        message: ChatMessage::assistant(&content),
                         finish_reason: Some("stop".to_string()),
                     }],
                 })

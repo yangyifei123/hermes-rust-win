@@ -34,10 +34,10 @@ impl LlmProvider for AnthropicProvider {
             let mut anthropic_messages = Vec::new();
             for msg in &request.messages {
                 match msg.role.as_str() {
-                    "system" => system_prompt = msg.content.clone(),
+                    "system" => system_prompt = msg.text().to_string(),
                     _ => anthropic_messages.push(json!({
                         "role": msg.role,
-                        "content": msg.content,
+                        "content": msg.text(),
                     })),
                 }
             }
@@ -78,10 +78,7 @@ impl LlmProvider for AnthropicProvider {
 
                 Ok(ChatResponse {
                     choices: vec![crate::provider::ChatChoice {
-                        message: ChatMessage {
-                            role: "assistant".to_string(),
-                            content,
-                        },
+                        message: crate::provider::ChatMessage::assistant(&content),
                         finish_reason: raw["stop_reason"].as_str().map(|s| s.to_string()),
                     }],
                 })

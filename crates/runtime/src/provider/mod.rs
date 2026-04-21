@@ -4,13 +4,64 @@ use std::pin::Pin;
 use futures::Stream;
 use crate::RuntimeError;
 
+// =============================================================================
+// Request types
+// =============================================================================
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
-    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl ChatMessage {
+    pub fn user(content: &str) -> Self {
+        Self { role: "user".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+    }
+    pub fn assistant(content: &str) -> Self {
+        Self { role: "assistant".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+    }
+    pub fn assistant_with_tool_calls(tool_calls: Vec<ToolCall>) -> Self {
+        Self { role: "assistant".to_string(), content: None, tool_calls: Some(tool_calls), tool_call_id: None }
+    }
+    pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
+        Self { role: "tool".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: Some(tool_call_id.to_string()) }
+    }
+    pub fn system(content: &str) -> Self {
+        Self { role: "system".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None }
+    }
+
+    /// Get text content, defaulting to empty string
+    pub fn text(&self) -> &str {
+        self.content.as_deref().unwrap_or("")
+    }
+
+    /// Check if this message has tool calls
+    pub fn has_tool_calls(&self) -> bool {
+        self.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
@@ -23,6 +74,10 @@ pub struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 }
+
+// =============================================================================
+// Response types
+// =============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChatChoice {
@@ -50,6 +105,10 @@ pub struct StreamChoice {
 pub struct DeltaMessage {
     pub content: Option<String>,
 }
+
+// =============================================================================
+// Provider trait
+// =============================================================================
 
 pub trait LlmProvider: Send + Sync {
     fn chat_completion(&self, request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>>;
