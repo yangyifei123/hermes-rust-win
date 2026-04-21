@@ -591,6 +591,7 @@ dependencies = [
  "chrono",
  "futures",
  "hermes-common",
+ "hermes-session-db",
  "regex",
  "reqwest",
  "serde",
