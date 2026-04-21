@@ -1,0 +1,31 @@
+name: Format Code
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format code
+        run: cargo fmt --all
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        if: github.event_name == 'push'
+        with:
+          commit-message: 'style: auto-format rust code'
+          file_pattern: '*.rs *.toml'
