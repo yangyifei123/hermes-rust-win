@@ -1,5 +1,6 @@
-use crate::provider::{ChatRequest, ChatResponse, LlmProvider, StreamChunk};
+use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice};
 use crate::RuntimeError;
+use futures::stream::StreamExt;
 use futures::Stream;
 use reqwest::Client;
 use std::pin::Pin;
@@ -20,6 +21,85 @@ impl OpenAiProvider {
             model: model.unwrap_or("gpt-4o").to_string(),
         }
     }
+}
+
+/// Parse a single SSE `data:` line into a `StreamChunk`.
+/// Returns `None` for `[DONE]` sentinel or non-parseable lines.
+fn parse_openai_sse_line(line: &str) -> Option<Result<StreamChunk, RuntimeError>> {
+    let data = line.strip_prefix("data: ")?;
+
+    if data.trim() == "[DONE]" {
+        return None;
+    }
+
+    match serde_json::from_str::<OpenAiStreamPayload>(data) {
+        Ok(payload) => {
+            let choices: Vec<StreamChoice> = payload
+                .choices
+                .into_iter()
+                .map(|c| StreamChoice {
+                    delta: DeltaMessage {
+                        content: c.delta.content,
+                    },
+                })
+                .collect();
+            Some(Ok(StreamChunk { choices }))
+        }
+        Err(e) => Some(Err(RuntimeError::ProviderError {
+            message: format!("Failed to parse OpenAI SSE JSON: {e}"),
+        })),
+    }
+}
+
+/// Intermediate struct for deserializing OpenAI stream deltas.
+#[derive(serde::Deserialize)]
+struct OpenAiStreamPayload {
+    choices: Vec<OpenAiStreamChoice>,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiStreamChoice {
+    delta: OpenAiStreamDelta,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiStreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+/// Process a raw SSE buffer into individual `data:` lines.
+/// SSE lines are separated by `\n\n`. Each event may have one `data:` line.
+fn sse_buffer_to_lines(buffer: &str) -> (Vec<String>, String) {
+    let mut complete_lines = Vec::new();
+    let mut remaining = String::new();
+
+    for chunk in buffer.split("\n\n") {
+        let trimmed = chunk.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Check if this looks like a complete SSE event (starts with "data:")
+        // If the last segment doesn't end cleanly, it's incomplete
+        if chunk == buffer && !buffer.ends_with("\n\n") && !buffer.contains("\n\n") {
+            // Entire buffer is one incomplete event
+            remaining = chunk.to_string();
+        } else if !buffer.ends_with("\n\n")
+            && chunk == buffer.rsplit_once("\n\n").map(|(_, s)| s).unwrap_or("")
+        {
+            // Last segment after last \n\n is incomplete
+            remaining = chunk.to_string();
+        } else {
+            for line in trimmed.lines() {
+                let line = line.trim();
+                if line.starts_with("data:") {
+                    complete_lines.push(line.to_string());
+                }
+            }
+        }
+    }
+
+    (complete_lines, remaining)
 }
 
 impl LlmProvider for OpenAiProvider {
@@ -55,12 +135,61 @@ impl LlmProvider for OpenAiProvider {
 
     fn chat_completion_stream(
         &self,
-        _request: ChatRequest,
+        mut request: ChatRequest,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            Err(RuntimeError::ProviderError {
-                message: "Streaming not yet implemented for OpenAI".to_string(),
-            })
+            if request.model.is_empty() {
+                request.model = self.model.clone();
+            }
+            request.stream = Some(true);
+
+            let url = format!("{}/chat/completions", self.base_url);
+            let resp = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(RuntimeError::ProviderError {
+                    message: format!("OpenAI streaming API error {status}: {body}"),
+                });
+            }
+
+            let stream = resp
+                .bytes_stream()
+                .scan(String::new(), |buffer, chunk_result| {
+                    let chunk = match chunk_result {
+                        Ok(c) => c,
+                        Err(e) => {
+                            return std::future::ready(Some(vec![Err(RuntimeError::ProviderError {
+                                message: format!("Stream read error: {e}"),
+                            })]));
+                        }
+                    };
+
+                    buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                    let (lines, remaining) = sse_buffer_to_lines(buffer);
+                    *buffer = remaining;
+
+                    let results: Vec<Result<StreamChunk, RuntimeError>> = lines
+                        .iter()
+                        .filter_map(|line| parse_openai_sse_line(line))
+                        .collect();
+
+                    std::future::ready(Some(results))
+                })
+                .map(futures::stream::iter)
+                .flatten();
+
+            Ok(Box::pin(stream) as Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>)
         })
     }
 
@@ -69,7 +198,7 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn default_model(&self) -> &str {
-        "gpt-4o"
+        &self.model
     }
 }
 
@@ -93,5 +222,76 @@ mod tests {
         );
         assert_eq!(provider.base_url, "https://custom.api.com/v1");
         assert_eq!(provider.model, "gpt-3.5-turbo");
+    }
+
+    #[test]
+    fn test_parse_openai_sse_content_delta() {
+        let line = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
+        let result = parse_openai_sse_line(line).unwrap().unwrap();
+        assert_eq!(result.choices.len(), 1);
+        assert_eq!(result.choices[0].delta.content.as_deref(), Some("Hello"));
+    }
+
+    #[test]
+    fn test_parse_openai_sse_done_sentinel() {
+        let line = "data: [DONE]";
+        assert!(parse_openai_sse_line(line).is_none());
+    }
+
+    #[test]
+    fn test_parse_openai_sse_empty_content() {
+        let line = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":null}]}"#;
+        let result = parse_openai_sse_line(line).unwrap().unwrap();
+        assert_eq!(result.choices.len(), 1);
+        assert!(result.choices[0].delta.content.is_none());
+    }
+
+    #[test]
+    fn test_parse_openai_sse_invalid_json() {
+        let line = "data: {invalid json}";
+        let result = parse_openai_sse_line(line).unwrap();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_openai_sse_non_data_line() {
+        assert!(parse_openai_sse_line(": comment").is_none());
+        assert!(parse_openai_sse_line("").is_none());
+        assert!(parse_openai_sse_line("event: ping").is_none());
+    }
+
+    #[test]
+    fn test_sse_buffer_to_lines_complete() {
+        let buffer = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\ndata: [DONE]\n\n";
+        let (lines, remaining) = sse_buffer_to_lines(buffer);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("\"Hi\""));
+        assert!(lines[1].contains("[DONE]"));
+        assert!(remaining.is_empty());
+    }
+
+    #[test]
+    fn test_sse_buffer_to_lines_incomplete() {
+        let buffer = "data: {\"choices\":[{\"delta\":{\"content\":\"Hel";
+        let (lines, remaining) = sse_buffer_to_lines(buffer);
+        assert!(lines.is_empty());
+        assert!(remaining.contains("Hel"));
+    }
+
+    #[test]
+    fn test_parse_openai_sse_role_delta() {
+        // Some deltas carry role instead of content (first chunk)
+        let line = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#;
+        let result = parse_openai_sse_line(line).unwrap().unwrap();
+        assert_eq!(result.choices.len(), 1);
+        assert!(result.choices[0].delta.content.is_none());
+    }
+
+    #[test]
+    fn test_parse_openai_sse_finish_reason() {
+        let line = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
+        let result = parse_openai_sse_line(line).unwrap().unwrap();
+        assert_eq!(result.choices.len(), 1);
+        assert!(result.choices[0].delta.content.is_none());
     }
 }

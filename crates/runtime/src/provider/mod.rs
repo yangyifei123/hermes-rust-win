@@ -125,13 +125,19 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
     -> Box<dyn LlmProvider> {
     match provider_type {
         hermes_common::Provider::Anthropic => {
+            let default_base = provider_type.default_base_url();
+            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.anthropic.com/v1" } else { default_base });
+            let model = provider_type.default_model();
             Box::new(crate::provider::anthropic::AnthropicProvider::new(
-                api_key.to_string(), base_url, None,
+                api_key.to_string(), Some(url), Some(model),
             ))
         }
         _ => {
+            let default_base = provider_type.default_base_url();
+            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.openai.com/v1" } else { default_base });
+            let model = provider_type.default_model();
             Box::new(crate::provider::openai::OpenAiProvider::new(
-                api_key.to_string(), base_url, None,
+                api_key.to_string(), Some(url), Some(model),
             ))
         }
     }
@@ -143,3 +149,67 @@ pub mod caching;
 
 pub use openai::OpenAiProvider;
 pub use anthropic::AnthropicProvider;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hermes_common::Provider;
+
+    #[test]
+    fn test_create_provider_openai() {
+        let provider = create_provider(&Provider::OpenAI, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "gpt-4o");
+    }
+
+    #[test]
+    fn test_create_provider_anthropic() {
+        let provider = create_provider(&Provider::Anthropic, "test-key", None);
+        assert_eq!(provider.name(), "anthropic");
+        assert_eq!(provider.default_model(), "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_create_provider_deepseek() {
+        // DeepSeek uses OpenAI-compatible API
+        let provider = create_provider(&Provider::DeepSeek, "test-key", None);
+        assert_eq!(provider.name(), "openai"); // Uses OpenAI provider struct
+        assert_eq!(provider.default_model(), "deepseek-chat");
+    }
+
+    #[test]
+    fn test_create_provider_custom_base_url() {
+        let provider = create_provider(&Provider::OpenAI, "test-key", Some("https://custom.api.com/v1"));
+        // Provider name is still "openai" but base_url is custom
+        assert_eq!(provider.name(), "openai");
+    }
+
+    #[test]
+    fn test_create_provider_kimi() {
+        // Kimi uses OpenAI-compatible API
+        let provider = create_provider(&Provider::Kimi, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "kimi-k2.5");
+    }
+
+    #[test]
+    fn test_create_provider_minimax() {
+        let provider = create_provider(&Provider::MiniMax, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "MiniMax-M2.7");
+    }
+
+    #[test]
+    fn test_create_provider_zai() {
+        let provider = create_provider(&Provider::Zai, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "glm-5");
+    }
+
+    #[test]
+    fn test_create_provider_openrouter() {
+        let provider = create_provider(&Provider::OpenRouter, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "openai/gpt-4o");
+    }
+}
