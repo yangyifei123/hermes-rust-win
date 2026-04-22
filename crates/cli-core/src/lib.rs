@@ -348,6 +348,7 @@ pub enum Commands {
 // ── Subcommand Enums ─────────────────────────────────────────────────────────
 
 #[derive(clap::Subcommand, Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum AuthCommand {
     Add {
         provider: String,
@@ -977,7 +978,7 @@ async fn handle_chat(
     quiet: bool,
 ) -> anyhow::Result<()> {
     use hermes_runtime::{Agent, AgentConfig, ChatRepl};
-    use hermes_runtime::provider::{LlmProvider, create_provider};
+    use hermes_runtime::provider::create_provider;
     use hermes_runtime::tool::{ToolRegistry, terminal::TerminalTool, file::{FileReadTool, FileWriteTool, FileSearchTool}, web::WebSearchTool, mcp::McpTool, browser::BrowserTool};
     use hermes_session_db::SessionStore;
 

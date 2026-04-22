@@ -168,8 +168,8 @@ pub fn handle_skills(cmd: SkillsCommand) -> Result<()> {
             };
 
             if results.is_empty() {
-                if query.is_some() {
-                    println!("No skills found matching '{}'.", query.as_ref().unwrap());
+                if let Some(query) = &query {
+                    println!("No skills found matching '{}'.", query);
                 } else {
                     println!("No skills installed.");
                     println!("Run 'hermes skills install <name>' to install a skill.");
@@ -962,16 +962,13 @@ pub fn handle_update() -> Result<()> {
         .args(["index", "versions", "hermes-agent"])
         .output();
 
-    match pip_check {
-        Ok(output) => {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            if output_str.contains("Available versions:") {
-                println!("  hermes-agent Python package update info:");
-                // Just show that we checked
-                println!("  Run 'pip install --upgrade hermes-agent' to update");
-            }
+    if let Ok(output) = pip_check {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        if output_str.contains("Available versions:") {
+            println!("  hermes-agent Python package update info:");
+            // Just show that we checked
+            println!("  Run 'pip install --upgrade hermes-agent' to update");
         }
-        _ => {}
     }
 
     Ok(())
@@ -1032,12 +1029,12 @@ pub fn handle_uninstall() -> Result<()> {
 pub fn handle_sessions(cmd: SessionsCommand) {
     match cmd {
         SessionsCommand::List { source, limit } => println!("Sessions list (source={:?}, limit={}) — coming soon", source, limit),
-        SessionsCommand::Export { output, source, session_id } => println!("Sessions export to '{}' — coming soon", output),
+        SessionsCommand::Export { output, source: _, session_id: _ } => println!("Sessions export to '{}' — coming soon", output),
         SessionsCommand::Delete { session_id, yes } => println!("Sessions delete '{}' (yes={}) — coming soon", session_id, yes),
-        SessionsCommand::Prune { older_than, source, yes } => println!("Sessions prune (older_than={} days) — coming soon", older_than),
+        SessionsCommand::Prune { older_than, source: _, yes: _ } => println!("Sessions prune (older_than={} days) — coming soon", older_than),
         SessionsCommand::Stats => println!("Sessions stats — coming soon"),
         SessionsCommand::Rename { session_id, title } => println!("Sessions rename '{}' to '{}' — coming soon", session_id, title.join(" ")),
-        SessionsCommand::Browse { source, limit } => println!("Sessions browse — coming soon"),
+        SessionsCommand::Browse { source: _, limit: _ } => println!("Sessions browse — coming soon"),
     }
 }
 

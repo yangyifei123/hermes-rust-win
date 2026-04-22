@@ -32,13 +32,20 @@ pub enum ScheduleKind {
 }
 
 impl ScheduleKind {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "once" => Some(ScheduleKind::Once),
             "interval" => Some(ScheduleKind::Interval),
             "cron" => Some(ScheduleKind::Cron),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for ScheduleKind {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::parse(s).ok_or_else(|| format!("Invalid schedule kind: {}", s))
     }
 }
 
@@ -115,7 +122,10 @@ impl CronJob {
             base_url: None,
             schedule,
             schedule_display: display,
-            repeat: RepeatConfig { max_times: None, completed: 0 },
+            repeat: RepeatConfig {
+                max_times: None,
+                completed: 0,
+            },
             enabled: true,
             state: "scheduled".to_string(),
             paused_at: None,
@@ -150,11 +160,11 @@ impl Default for JobsStorage {
 pub fn parse_duration(s: &str) -> Result<u32> {
     let s = s.trim().to_lowercase();
     let re = regex_lite::Regex::new(r"^(\d+)\s*(m|min|mins|h|hr|hrs|d|day|days)$").unwrap();
-    
+
     if let Some(caps) = re.captures(&s) {
         let value: u32 = caps.get(1).unwrap().as_str().parse().unwrap();
         let unit = caps.get(2).unwrap().as_str();
-        
+
         let multiplier = match unit.chars().next().unwrap() {
             'm' => 1,
             'h' => 60,
@@ -163,15 +173,18 @@ pub fn parse_duration(s: &str) -> Result<u32> {
         };
         return Ok(value * multiplier);
     }
-    
-    anyhow::bail!("Invalid duration format: '{}'. Use format like '30m', '2h', '1d'", s);
+
+    anyhow::bail!(
+        "Invalid duration format: '{}'. Use format like '30m', '2h', '1d'",
+        s
+    );
 }
 
 /// Parse schedule string
 pub fn parse_schedule(s: &str) -> Result<Schedule> {
     let s = s.trim();
     let s_lower = s.to_lowercase();
-    
+
     // "every X" pattern - recurring interval
     if s_lower.starts_with("every ") {
         let duration_str = &s[6..].trim();
@@ -184,7 +197,7 @@ pub fn parse_schedule(s: &str) -> Result<Schedule> {
             run_at: None,
         });
     }
-    
+
     // Cron expression (5 fields)
     let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() >= 5 {
@@ -197,7 +210,7 @@ pub fn parse_schedule(s: &str) -> Result<Schedule> {
             run_at: None,
         });
     }
-    
+
     // Duration like "30m", "2h", "1d" - one-shot
     if let Ok(minutes) = parse_duration(s) {
         let run_at = (Utc::now() + Duration::minutes(minutes as i64)).to_rfc3339();
@@ -209,7 +222,7 @@ pub fn parse_schedule(s: &str) -> Result<Schedule> {
             run_at: Some(run_at),
         });
     }
-    
+
     // ISO timestamp
     if s.contains('T') || s.starts_with(|c: char| c.is_ascii_digit()) {
         if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
@@ -222,7 +235,7 @@ pub fn parse_schedule(s: &str) -> Result<Schedule> {
             });
         }
     }
-    
+
     anyhow::bail!(
         "Invalid schedule '{}'. Use:\n\
         - Duration: '30m', '2h', '1d' (one-shot)\n\
@@ -240,7 +253,8 @@ pub fn compute_next_run(schedule: &Schedule, last_run_at: Option<&str>) -> Optio
         ScheduleKind::Interval => {
             let minutes = schedule.minutes.unwrap_or(30);
             let base = if let Some(last) = last_run_at {
-                DateTime::parse_from_rfc3339(last).ok()
+                DateTime::parse_from_rfc3339(last)
+                    .ok()
                     .map(|dt| dt.with_timezone(&Utc))
             } else {
                 Some(Utc::now())
@@ -269,17 +283,16 @@ pub fn ensure_dirs() -> Result<()> {
 pub fn load_jobs() -> Result<Vec<CronJob>> {
     ensure_dirs()?;
     let path = cron_jobs_path();
-    
+
     if !path.exists() {
         return Ok(vec![]);
     }
-    
-    let content = fs::read_to_string(&path)
-        .context("failed to read cron jobs file")?;
-    
-    let storage: JobsStorage = serde_json::from_str(&content)
-        .context("failed to parse cron jobs JSON")?;
-    
+
+    let content = fs::read_to_string(&path).context("failed to read cron jobs file")?;
+
+    let storage: JobsStorage =
+        serde_json::from_str(&content).context("failed to parse cron jobs JSON")?;
+
     Ok(storage.jobs)
 }
 
@@ -287,18 +300,17 @@ pub fn load_jobs() -> Result<Vec<CronJob>> {
 pub fn save_jobs(jobs: &[CronJob]) -> Result<()> {
     ensure_dirs()?;
     let path = cron_jobs_path();
-    
+
     let storage = JobsStorage {
         jobs: jobs.to_vec(),
         updated_at: Utc::now().to_rfc3339(),
     };
-    
-    let content = serde_json::to_string_pretty(&storage)
-        .context("failed to serialize cron jobs")?;
-    
-    fs::write(&path, content)
-        .context("failed to write cron jobs file")?;
-    
+
+    let content =
+        serde_json::to_string_pretty(&storage).context("failed to serialize cron jobs")?;
+
+    fs::write(&path, content).context("failed to write cron jobs file")?;
+
     Ok(())
 }
 
@@ -378,7 +390,7 @@ pub fn resume_job(job_id: &str) -> Result<Option<CronJob>> {
             return Ok(Some(updated));
         }
     }
-    
+
     Ok(None)
 }
 
@@ -433,10 +445,10 @@ mod tests {
     fn test_parse_schedule() {
         let s = parse_schedule("30m").unwrap();
         assert_eq!(s.kind, ScheduleKind::Once);
-        
+
         let s = parse_schedule("every 30m").unwrap();
         assert_eq!(s.kind, ScheduleKind::Interval);
-        
+
         let s = parse_schedule("every 2h").unwrap();
         assert_eq!(s.kind, ScheduleKind::Interval);
         assert_eq!(s.minutes, Some(120));

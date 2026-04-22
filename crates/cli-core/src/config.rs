@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use tracing::info;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default)]
     pub model: ModelConfig,
@@ -130,17 +130,6 @@ impl Default for AgentConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            model: ModelConfig::default(),
-            terminal: TerminalConfig::default(),
-            display: DisplayConfig::default(),
-            agent: AgentConfig::default(),
-        }
-    }
-}
-
 impl Config {
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path();
@@ -165,7 +154,9 @@ impl Config {
             return PathBuf::from(home);
         }
         if let Ok(profile) = std::env::var("HERMES_PROFILE") {
-            if let Some(proj_dirs) = ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile)) {
+            if let Some(proj_dirs) =
+                ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile))
+            {
                 return proj_dirs.config_dir().to_path_buf();
             }
         }
@@ -184,8 +175,7 @@ impl Config {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create config directory {:?}", parent))?;
         }
-        let content = serde_yaml::to_string(self)
-            .context("failed to serialize config")?;
+        let content = serde_yaml::to_string(self).context("failed to serialize config")?;
         fs::write(&config_path, content)
             .with_context(|| format!("failed to write config to {:?}", config_path))?;
         info!("saved config to {:?}", config_path);
@@ -220,7 +210,7 @@ pub fn load_dotenv() -> Result<()> {
 mod tests {
     use super::*;
 
-#[test]
+    #[test]
     fn test_config_default() {
         let config = Config::default();
         assert_eq!(config.model.default, "gpt-4o");

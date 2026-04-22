@@ -89,8 +89,7 @@ fn is_process_alive(pid: u32) -> bool {
 pub fn write_pid_file() -> Result<()> {
     let pid_path = gateway_pid_path();
     if let Some(parent) = pid_path.parent() {
-        fs::create_dir_all(parent)
-            .context("failed to create hermes home directory")?;
+        fs::create_dir_all(parent).context("failed to create hermes home directory")?;
     }
     let pid = std::process::id();
     let data = serde_json::json!({
@@ -99,10 +98,8 @@ pub fn write_pid_file() -> Result<()> {
         "argv": std::env::args().collect::<Vec<_>>(),
         "start_time": chrono::Utc::now().to_rfc3339(),
     });
-    let content = serde_json::to_string_pretty(&data)
-        .context("failed to serialize PID data")?;
-    fs::write(&pid_path, content)
-        .context("failed to write gateway PID file")?;
+    let content = serde_json::to_string_pretty(&data).context("failed to serialize PID data")?;
+    fs::write(&pid_path, content).context("failed to write gateway PID file")?;
     info!("wrote gateway PID file with pid={}", pid);
     Ok(())
 }
@@ -111,8 +108,7 @@ pub fn write_pid_file() -> Result<()> {
 pub fn remove_pid_file() -> Result<()> {
     let pid_path = gateway_pid_path();
     if pid_path.exists() {
-        fs::remove_file(&pid_path)
-            .context("failed to remove gateway PID file")?;
+        fs::remove_file(&pid_path).context("failed to remove gateway PID file")?;
     }
     Ok(())
 }
@@ -161,13 +157,11 @@ pub fn read_gateway_state() -> Option<GatewayState> {
 pub fn write_gateway_state(state: &GatewayState) -> Result<()> {
     let state_path = gateway_state_path();
     if let Some(parent) = state_path.parent() {
-        fs::create_dir_all(parent)
-            .context("failed to create hermes home directory")?;
+        fs::create_dir_all(parent).context("failed to create hermes home directory")?;
     }
-    let content = serde_json::to_string_pretty(state)
-        .context("failed to serialize gateway state")?;
-    fs::write(&state_path, content)
-        .context("failed to write gateway state file")?;
+    let content =
+        serde_json::to_string_pretty(state).context("failed to serialize gateway state")?;
+    fs::write(&state_path, content).context("failed to write gateway state file")?;
     Ok(())
 }
 
@@ -187,7 +181,7 @@ pub enum Platform {
 }
 
 impl Platform {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "cli" | "local" => Some(Platform::Cli),
             "telegram" | "tg" => Some(Platform::Telegram),
@@ -198,7 +192,16 @@ impl Platform {
             _ => None,
         }
     }
+}
 
+impl std::str::FromStr for Platform {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::parse(s).ok_or_else(|| format!("Invalid platform: {}", s))
+    }
+}
+
+impl Platform {
     pub fn as_str(&self) -> &'static str {
         match self {
             Platform::Cli => "cli",
@@ -247,7 +250,9 @@ pub fn is_service_installed() -> bool {
         match output {
             Ok(out) => {
                 let stdout = String::from_utf8_lossy(&out.stdout);
-                stdout.contains("RUNNING") || stdout.contains("STOPPED") || stdout.contains("PAUSED")
+                stdout.contains("RUNNING")
+                    || stdout.contains("STOPPED")
+                    || stdout.contains("PAUSED")
             }
             Err(_) => false,
         }
@@ -294,8 +299,7 @@ pub fn get_service_status() -> ServiceStatus {
 
 /// Install the gateway as a Windows service using sc.exe
 pub fn install_service() -> Result<()> {
-    let exe_path = std::env::current_exe()
-        .context("failed to get current executable path")?;
+    let exe_path = std::env::current_exe().context("failed to get current executable path")?;
     let exe_str = exe_path.to_string_lossy();
 
     // Create the service bin path with the "gateway run" arguments
@@ -328,7 +332,7 @@ pub fn install_service() -> Result<()> {
                 "failure",
                 SERVICE_NAME,
                 "reset=",
-                "86400",     // Reset failure count after 24 hours
+                "86400", // Reset failure count after 24 hours
                 "actions=",
                 "restart/30000/restart/60000/restart/120000", // Restart with increasing delays
             ])
@@ -465,17 +469,24 @@ impl std::fmt::Display for ServiceStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_platform_parse() {
+        assert_eq!(Platform::parse("cli"), Some(Platform::Cli));
+        assert_eq!(Platform::parse("telegram"), Some(Platform::Telegram));
+        assert_eq!(Platform::parse("TG"), Some(Platform::Telegram));
+        assert_eq!(Platform::parse("discord"), Some(Platform::Discord));
+        assert_eq!(Platform::parse("slack"), Some(Platform::Slack));
+        assert_eq!(Platform::parse("whatsapp"), Some(Platform::WhatsApp));
+        assert_eq!(Platform::parse("webhook"), Some(Platform::Webhook));
+        assert_eq!(Platform::parse("unknown"), None);
+    }
 
     #[test]
     fn test_platform_from_str() {
-        assert_eq!(Platform::from_str("cli"), Some(Platform::Cli));
-        assert_eq!(Platform::from_str("telegram"), Some(Platform::Telegram));
-        assert_eq!(Platform::from_str("TG"), Some(Platform::Telegram));
-        assert_eq!(Platform::from_str("discord"), Some(Platform::Discord));
-        assert_eq!(Platform::from_str("slack"), Some(Platform::Slack));
-        assert_eq!(Platform::from_str("whatsapp"), Some(Platform::WhatsApp));
-        assert_eq!(Platform::from_str("webhook"), Some(Platform::Webhook));
-        assert_eq!(Platform::from_str("unknown"), None);
+        assert!(Platform::from_str("cli").is_ok());
+        assert!(Platform::from_str("unknown").is_err());
     }
 
     #[test]
@@ -522,7 +533,10 @@ mod tests {
         assert_eq!(format!("{}", ServiceStatus::Running), "running");
         assert_eq!(format!("{}", ServiceStatus::Stopped), "stopped");
         assert_eq!(format!("{}", ServiceStatus::NotFound), "not_found");
-        assert_eq!(format!("{}", ServiceStatus::NotApplicable), "not_applicable");
+        assert_eq!(
+            format!("{}", ServiceStatus::NotApplicable),
+            "not_applicable"
+        );
     }
 
     #[test]
