@@ -18,6 +18,7 @@ pub struct AgentConfig {
     pub system_prompt: String,
     pub timeout_secs: u64,
     pub yolo: bool,  // Skip approval for dangerous commands
+    pub max_context_tokens: usize,  // Max tokens before truncation
 }
 
 impl Default for AgentConfig {
@@ -27,6 +28,7 @@ impl Default for AgentConfig {
             system_prompt: String::new(),
             timeout_secs: 120,
             yolo: false,
+            max_context_tokens: 128_000,
         }
     }
 }
@@ -135,6 +137,9 @@ impl Agent {
             };
             chat_messages.push(chat_msg);
         }
+
+        // Truncate if over token limit
+        chat_messages = crate::context::token_est::truncate_messages(chat_messages, self.config.max_context_tokens);
 
         Ok(chat_messages)
     }
@@ -461,6 +466,7 @@ mod tests {
             system_prompt: String::new(),
             timeout_secs: 10,
             yolo: false,
+            max_context_tokens: 128_000,
         };
         let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
 

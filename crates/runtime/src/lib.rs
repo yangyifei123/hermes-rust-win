@@ -4,6 +4,7 @@ pub mod tool;
 pub mod agent;
 pub mod chat;
 pub mod gateway;
+pub mod context;
 
 pub use error::RuntimeError;
 pub use agent::{Agent, AgentConfig, AgentResponse, IterationBudget};

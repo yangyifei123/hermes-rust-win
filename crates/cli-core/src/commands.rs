@@ -1027,14 +1027,135 @@ pub fn handle_uninstall() -> Result<()> {
 // ── Stub handlers for new commands ──────────────────────────────────────────
 
 pub fn handle_sessions(cmd: SessionsCommand) {
+    use hermes_session_db::SessionStore;
+
+    let home = crate::config::Config::hermes_home();
+    let db_path = home.join("sessions.db");
+    let store = match SessionStore::new(&db_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error opening session database: {}", e);
+            return;
+        }
+    };
+
     match cmd {
-        SessionsCommand::List { source, limit } => println!("Sessions list (source={:?}, limit={}) — coming soon", source, limit),
-        SessionsCommand::Export { output, source: _, session_id: _ } => println!("Sessions export to '{}' — coming soon", output),
-        SessionsCommand::Delete { session_id, yes } => println!("Sessions delete '{}' (yes={}) — coming soon", session_id, yes),
-        SessionsCommand::Prune { older_than, source: _, yes: _ } => println!("Sessions prune (older_than={} days) — coming soon", older_than),
-        SessionsCommand::Stats => println!("Sessions stats — coming soon"),
-        SessionsCommand::Rename { session_id, title } => println!("Sessions rename '{}' to '{}' — coming soon", session_id, title.join(" ")),
-        SessionsCommand::Browse { source: _, limit: _ } => println!("Sessions browse — coming soon"),
+        SessionsCommand::List { source: _, limit } => {
+            let sessions = match store.list_sessions(limit as usize) {
+                Ok(s) => s,
+                Err(e) => { eprintln!("Error listing sessions: {}", e); return; }
+            };
+            if sessions.is_empty() {
+                println!("No sessions found.");
+                return;
+            }
+            println!("ID                                     Source          Model                Updated");
+            println!("{}", "-".repeat(90));
+            for s in &sessions {
+                let updated = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                println!("{:<38} {:<15} {:<20} {}", s.id.to_string(), s.source, s.model, updated);
+            }
+            println!("\n{} session(s) shown.", sessions.len());
+        }
+        SessionsCommand::Export { output, source: _, session_id } => {
+            let sid = match session_id {
+                Some(id) => match id.parse::<uuid::Uuid>() {
+                    Ok(u) => u,
+                    Err(_) => { eprintln!("Invalid session ID: {}", id); return; }
+                },
+                None => { eprintln!("Please specify --session-id to export."); return; }
+            };
+            let messages = match store.get_messages(&sid) {
+                Ok(m) => m,
+                Err(e) => { eprintln!("Error reading session: {}", e); return; }
+            };
+            let json = serde_json::to_string_pretty(&messages).unwrap_or_default();
+            match std::fs::write(&output, &json) {
+                Ok(_) => println!("Exported {} messages to '{}'.", messages.len(), output),
+                Err(e) => eprintln!("Error writing file: {}", e),
+            }
+        }
+        SessionsCommand::Delete { session_id, yes } => {
+            let sid = match session_id.parse::<uuid::Uuid>() {
+                Ok(u) => u,
+                Err(_) => { eprintln!("Invalid session ID: {}", session_id); return; }
+            };
+            if !yes {
+                println!("Are you sure you want to delete session {}? Use -y to confirm.", sid);
+                return;
+            }
+            match store.delete_session(&sid) {
+                Ok(_) => println!("Session {} deleted.", sid),
+                Err(e) => eprintln!("Error deleting session: {}", e),
+            }
+        }
+        SessionsCommand::Prune { older_than, source: _, yes: _ } => {
+            // List sessions and filter by age
+            let sessions = match store.list_sessions(1000) {
+                Ok(s) => s,
+                Err(e) => { eprintln!("Error listing sessions: {}", e); return; }
+            };
+            let cutoff = chrono::Utc::now() - chrono::Duration::days(older_than as i64);
+            let old_sessions: Vec<_> = sessions.iter()
+                .filter(|s| s.updated_at < cutoff)
+                .collect();
+            if old_sessions.is_empty() {
+                println!("No sessions older than {} days found.", older_than);
+                return;
+            }
+            println!("Found {} session(s) older than {} days.", old_sessions.len(), older_than);
+            for s in &old_sessions {
+                println!("  {} (updated: {})", s.id, s.updated_at.format("%Y-%m-%d"));
+            }
+            println!("Run with -y to confirm deletion.");
+        }
+        SessionsCommand::Stats => {
+            let sessions = match store.list_sessions(10000) {
+                Ok(s) => s,
+                Err(e) => { eprintln!("Error listing sessions: {}", e); return; }
+            };
+            let total_messages: usize = sessions.iter()
+                .filter_map(|s| store.get_messages(&s.id).ok())
+                .map(|m| m.len())
+                .sum();
+            println!("Session Statistics:");
+            println!("  Total sessions: {}", sessions.len());
+            println!("  Total messages: {}", total_messages);
+            if !sessions.is_empty() {
+                let latest = &sessions[0];
+                println!("  Latest session: {} ({})", latest.id, latest.model);
+            }
+        }
+        SessionsCommand::Rename { session_id, title } => {
+            // Session rename not supported in current schema — would need title column
+            let _ = (session_id, title);
+            println!("Session rename not yet supported in current schema.");
+        }
+        SessionsCommand::Browse { source: _, limit } => {
+            // Browse is same as list with message preview
+            let sessions = match store.list_sessions(limit as usize) {
+                Ok(s) => s,
+                Err(e) => { eprintln!("Error listing sessions: {}", e); return; }
+            };
+            if sessions.is_empty() {
+                println!("No sessions found.");
+                return;
+            }
+            for s in &sessions {
+                println!("══ {} ══", s.id);
+                println!("  Model: {} | Source: {} | Updated: {}", s.model, s.source, s.updated_at.format("%Y-%m-%d %H:%M"));
+                if let Ok(msgs) = store.get_messages(&s.id) {
+                    for msg in msgs.iter().take(3) {
+                        let preview: String = msg.content.chars().take(80).collect();
+                        println!("  [{:?}] {}", msg.role, preview);
+                    }
+                    if msgs.len() > 3 {
+                        println!("  ... and {} more messages", msgs.len() - 3);
+                    }
+                }
+                println!();
+            }
+        }
     }
 }
 

@@ -1040,6 +1040,7 @@ async fn handle_chat(
         system_prompt: system.unwrap_or_else(|| user_config.agent.system_prompt.clone()),
         timeout_secs: user_config.terminal.timeout,
         yolo,
+        max_context_tokens: 128_000,
     };
 
     // Create agent
