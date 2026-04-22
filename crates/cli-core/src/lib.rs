@@ -1064,7 +1064,8 @@ async fn handle_chat(
 
     // Resolve API key: auth store > env var
     let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
-    let api_key = auth_store.get(provider_str)
+    let credential = auth_store.get(provider_str);
+    let api_key = credential
         .map(|c| c.api_key.clone())
         .or_else(|| std::env::var(format!("{}_API_KEY", provider_str.to_uppercase())).ok())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
@@ -1079,8 +1080,13 @@ async fn handle_chat(
         }
     };
 
+    // Resolve base_url: credential store > config > provider default
+    let base_url_owned = credential
+        .and_then(|c| c.base_url.clone())
+        .or_else(|| if user_config.model.base_url.is_empty() { None } else { Some(user_config.model.base_url.clone()) });
+    let base_url = base_url_owned.as_deref();
+
     // Resolve model: CLI flag > config > provider default
-    let base_url = if user_config.model.base_url.is_empty() { None } else { Some(user_config.model.base_url.as_str()) };
     let model = model.unwrap_or_else(|| {
         if !user_config.model.default.is_empty() { user_config.model.default.clone() }
         else { create_provider(&provider_type, &api_key, base_url).default_model().to_string() }
