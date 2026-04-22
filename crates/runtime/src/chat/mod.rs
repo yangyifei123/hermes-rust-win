@@ -219,7 +219,7 @@ mod tests {
         let provider = Box::new(MockProvider::new("Mock response"));
         let tools = ToolRegistry::new();
         let store = SessionStore::new_in_memory().unwrap();
-        let config = AgentConfig::default();
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
         Agent::new(provider, tools, store, config, "test-model".to_string())
     }
 

@@ -1,8 +1,9 @@
 //! Agent core loop - orchestrates LLM calls, tool dispatch, and session persistence
 
-use crate::provider::{ChatMessage, ChatRequest, LlmProvider};
+use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider};
 use crate::tool::ToolRegistry;
 use crate::RuntimeError;
+use futures::StreamExt;
 use hermes_session_db::{SessionStore, Message, MessageRole};
 use serde_json::json;
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub struct AgentConfig {
     pub timeout_secs: u64,
     pub yolo: bool,  // Skip approval for dangerous commands
     pub max_context_tokens: usize,  // Max tokens before truncation
+    pub streaming: bool,  // Use SSE streaming when available
 }
 
 impl Default for AgentConfig {
@@ -29,6 +31,7 @@ impl Default for AgentConfig {
             timeout_secs: 120,
             yolo: false,
             max_context_tokens: 128_000,
+            streaming: true,
         }
     }
 }
@@ -207,18 +210,65 @@ impl Agent {
                 },
                 max_tokens: Some(4096),
                 temperature: Some(0.7),
-                stream: None,
+                stream: if self.config.streaming { Some(true) } else { None },
             };
 
-            // Call LLM with timeout
-            let response = tokio::time::timeout(
-                std::time::Duration::from_secs(self.config.timeout_secs),
-                self.provider.chat_completion(request),
-            )
-            .await
-            .map_err(|_| RuntimeError::TimeoutError {
-                duration_secs: self.config.timeout_secs,
-            })??;
+            // Call LLM with timeout — use streaming or non-streaming based on config
+            let response = if self.config.streaming {
+                // Streaming mode: collect chunks into full response
+                let stream_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(self.config.timeout_secs),
+                    self.provider.chat_completion_stream(request),
+                ).await;
+
+                let mut stream = stream_result
+                    .map_err(|_| RuntimeError::TimeoutError {
+                        duration_secs: self.config.timeout_secs,
+                    })??;
+
+                // Collect all chunks into a single response
+                let mut full_content = String::new();
+                let finish_reason: Option<String> = None;
+
+                let collect_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(self.config.timeout_secs),
+                    async {
+                        while let Some(chunk_result) = stream.next().await {
+                            let chunk = chunk_result?;
+                            if let Some(choice) = chunk.choices.first() {
+                                if let Some(ref content) = choice.delta.content {
+                                    // In a real REPL, we'd print each chunk here.
+                                    // For now, accumulate into full_content.
+                                    full_content.push_str(content);
+                                }
+                            }
+                        }
+                        Ok::<(), RuntimeError>(())
+                    },
+                ).await;
+
+                collect_result
+                    .map_err(|_| RuntimeError::TimeoutError {
+                        duration_secs: self.config.timeout_secs,
+                    })??;
+
+                ChatResponse {
+                    choices: vec![crate::provider::ChatChoice {
+                        message: ChatMessage::assistant(&full_content),
+                        finish_reason,
+                    }],
+                }
+            } else {
+                // Non-streaming mode
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(self.config.timeout_secs),
+                    self.provider.chat_completion(request),
+                )
+                .await
+                .map_err(|_| RuntimeError::TimeoutError {
+                    duration_secs: self.config.timeout_secs,
+                })??
+            };
 
             // Consume one iteration slot
             self.budget.consume();
@@ -414,7 +464,8 @@ mod tests {
         tools.register(Box::new(MockTool));
 
         let store = SessionStore::new_in_memory().unwrap();
-        let config = AgentConfig::default();
+        // Use non-streaming for mock tests
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
         let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
 
         let response = agent.run_query("hi").await.unwrap();
@@ -426,7 +477,7 @@ mod tests {
         let provider = Box::new(MockProvider::new(vec!["Response".to_string()]));
         let tools = ToolRegistry::new();
         let store = SessionStore::new_in_memory().unwrap();
-        let config = AgentConfig::default();
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
         let agent = Agent::new(provider, tools, store, config, "test-model".to_string());
 
         let session_id = agent.create_session().unwrap();
@@ -440,7 +491,7 @@ mod tests {
         let provider = Box::new(MockProvider::new(vec!["AI response".to_string()]));
         let tools = ToolRegistry::new();
         let store = SessionStore::new_in_memory().unwrap();
-        let config = AgentConfig::default();
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
         let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
 
         let session_id = agent.create_session().unwrap();
@@ -467,6 +518,7 @@ mod tests {
             timeout_secs: 10,
             yolo: false,
             max_context_tokens: 128_000,
+            streaming: false, // Tests use non-streaming
         };
         let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
 

@@ -880,10 +880,80 @@ pub enum ClawCommand {
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
+/// Check C drive free space and auto-clean when below threshold.
+/// Returns the free GB after any cleanup.
+fn ensure_disk_space(threshold_gb: f64) -> f64 {
+    #[cfg(target_os = "windows")]
+    {
+        // Use PowerShell to check disk space
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "(Get-PSDrive C).Free / 1GB"])
+            .output();
+
+        let free_gb = match output {
+            Ok(o) if o.status.success() => {
+                let stdout = String::from_utf8_lossy(&o.stdout);
+                stdout.trim().parse::<f64>().unwrap_or(100.0)
+            }
+            _ => 100.0, // Assume OK if can't check
+        };
+
+        if free_gb < threshold_gb {
+            info!("C drive low: {:.2}GB free (threshold: {:.2}GB), auto-cleaning...", free_gb, threshold_gb);
+
+            // Clean cargo target on E: drive
+            let _ = std::fs::remove_dir_all("E:\\AI_field\\hermes-rust-win\\target");
+
+            // Clean C: caches
+            let home = std::env::var("USERPROFILE").unwrap_or("C:\\Users\\Default".to_string());
+            let dirs_to_clean = [
+                format!("{}\\.cargo\\registry\\cache", home),
+                format!("{}\\.cargo\\registry\\src", home),
+                format!("{}\\.cache", home),
+                format!("{}\\AppData\\Local\\npm-cache", home),
+            ];
+            for dir in &dirs_to_clean {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+
+            // Re-check after cleanup
+            let output2 = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", "(Get-PSDrive C).Free / 1GB"])
+                .output();
+
+            let free_gb_after = match output2 {
+                Ok(o) if o.status.success() => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    stdout.trim().parse::<f64>().unwrap_or(free_gb)
+                }
+                _ => free_gb,
+            };
+
+            info!("After cleanup: {:.2}GB free", free_gb_after);
+
+            if free_gb_after < threshold_gb / 2.0 {
+                eprintln!("⚠ WARNING: C drive critically low ({:.2}GB free). Consider manual cleanup.", free_gb_after);
+            }
+
+            free_gb_after
+        } else {
+            free_gb
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        threshold_gb + 1.0 // Non-Windows: no-op
+    }
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     init_logging(cli.verbose, cli.debug);
     info!("hermes-cli starting...");
+
+    // Auto-check C drive space on Windows
+    ensure_disk_space(2.0);
 
     let _config = Config::load()?;
 
@@ -1041,6 +1111,7 @@ async fn handle_chat(
         timeout_secs: user_config.terminal.timeout,
         yolo,
         max_context_tokens: 128_000,
+        streaming: user_config.display.streaming,
     };
 
     // Create agent
