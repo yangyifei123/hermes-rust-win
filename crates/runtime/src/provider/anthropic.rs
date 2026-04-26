@@ -1,4 +1,5 @@
 use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice};
+use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
 use futures::Stream;
@@ -181,43 +182,54 @@ impl LlmProvider for AnthropicProvider {
             }
 
             let url = format!("{}/messages", self.base_url);
-            let resp = self
-                .client
-                .post(&url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+            let policy = RetryPolicy::default();
 
-            if resp.status().is_success() {
-                let raw: serde_json::Value = resp
-                    .json()
-                    .await
-                    .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+            with_retry(&policy, || {
+                let b = body.clone();
+                let url = url.clone();
+                async move {
+                    let resp = self
+                        .client
+                        .post(&url)
+                        .header("x-api-key", &self.api_key)
+                        .header("anthropic-version", "2023-06-01")
+                        .header("Content-Type", "application/json")
+                        .json(&b)
+                        .send()
+                        .await
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
-                let content = raw["content"]
-                    .as_array()
-                    .and_then(|arr| arr.first())
-                    .and_then(|block| block["text"].as_str())
-                    .unwrap_or("")
-                    .to_string();
+                    let code = resp.status().as_u16();
+                    if resp.status().is_success() {
+                        let raw: serde_json::Value = resp
+                            .json()
+                            .await
+                            .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
-                Ok(ChatResponse {
-                    choices: vec![crate::provider::ChatChoice {
-                        message: crate::provider::ChatMessage::assistant(&content),
-                        finish_reason: raw["stop_reason"].as_str().map(|s| s.to_string()),
-                    }],
-                })
-            } else {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                Err(RuntimeError::ProviderError {
-                    message: format!("Anthropic API error {}: {}", status, body),
-                })
-            }
+                        let content = raw["content"]
+                            .as_array()
+                            .and_then(|arr| arr.first())
+                            .and_then(|block| block["text"].as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        Ok(ChatResponse {
+                            choices: vec![crate::provider::ChatChoice {
+                                message: crate::provider::ChatMessage::assistant(&content),
+                                finish_reason: raw["stop_reason"].as_str().map(|s| s.to_string()),
+                            }],
+                            usage: None,
+                        })
+                    } else if code == 429 {
+                        Err(RuntimeError::RateLimitError { retry_after: None })
+                    } else {
+                        let body_text = resp.text().await.unwrap_or_default();
+                        Err(RuntimeError::ProviderError {
+                            message: format!("Anthropic API error {}: {}", code, body_text),
+                        })
+                    }
+                }
+            }).await
         })
     }
 
@@ -253,24 +265,36 @@ impl LlmProvider for AnthropicProvider {
             }
 
             let url = format!("{}/messages", self.base_url);
-            let resp = self
-                .client
-                .post(&url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+            let policy = RetryPolicy::default();
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(RuntimeError::ProviderError {
-                    message: format!("Anthropic streaming API error {status}: {body}"),
-                });
-            }
+            let resp = with_retry(&policy, || {
+                let b = body.clone();
+                let url = url.clone();
+                async move {
+                    let r = self
+                        .client
+                        .post(&url)
+                        .header("x-api-key", &self.api_key)
+                        .header("anthropic-version", "2023-06-01")
+                        .header("Content-Type", "application/json")
+                        .json(&b)
+                        .send()
+                        .await
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+
+                    let code = r.status().as_u16();
+                    if r.status().is_success() {
+                        Ok(r)
+                    } else if code == 429 {
+                        Err(RuntimeError::RateLimitError { retry_after: None })
+                    } else {
+                        let body_text = r.text().await.unwrap_or_default();
+                        Err(RuntimeError::ProviderError {
+                            message: format!("Anthropic streaming API error {code}: {body_text}"),
+                        })
+                    }
+                }
+            }).await?;
 
             let parser_state = SseParserState::new();
             let buffer = String::new();

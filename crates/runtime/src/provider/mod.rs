@@ -92,6 +92,18 @@ pub struct ChatChoice {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChatResponse {
     pub choices: Vec<ChatChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TokenUsage {
+    #[serde(rename = "prompt_tokens")]
+    pub input_tokens: u32,
+    #[serde(rename = "completion_tokens")]
+    pub output_tokens: u32,
+    #[serde(rename = "total_tokens")]
+    pub total_tokens: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,6 +144,14 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
                 api_key.to_string(), Some(url), Some(model),
             ))
         }
+        hermes_common::Provider::Groq => {
+            let default_base = provider_type.default_base_url();
+            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.groq.com/openai/v1" } else { default_base });
+            let model = provider_type.default_model();
+            Box::new(crate::provider::openai::OpenAiProvider::new(
+                api_key.to_string(), Some(url), Some(model),
+            ))
+        }
         _ => {
             let default_base = provider_type.default_base_url();
             let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.openai.com/v1" } else { default_base });
@@ -146,6 +166,8 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
 pub mod openai;
 pub mod anthropic;
 pub mod caching;
+pub mod groq;
+pub mod retry;
 
 pub use openai::OpenAiProvider;
 pub use anthropic::AnthropicProvider;
@@ -211,5 +233,12 @@ mod tests {
         let provider = create_provider(&Provider::OpenRouter, "test-key", None);
         assert_eq!(provider.name(), "openai");
         assert_eq!(provider.default_model(), "openai/gpt-4o");
+    }
+
+    #[test]
+    fn test_create_provider_groq() {
+        let provider = create_provider(&Provider::Groq, "test-key", None);
+        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.default_model(), "llama-3.1-70b-versatile");
     }
 }

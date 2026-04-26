@@ -1,4 +1,5 @@
 use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice};
+use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
 use futures::Stream;
@@ -109,27 +110,39 @@ impl LlmProvider for OpenAiProvider {
                 request.model = self.model.clone();
             }
             let url = format!("{}/chat/completions", self.base_url);
-            let resp = self
-                .client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+            let policy = RetryPolicy::default();
+            with_retry(&policy, || {
+                let req = request.clone();
+                let url = url.clone();
+                async move {
+                    let resp = self
+                        .client
+                        .post(&url)
+                        .header("Authorization", format!("Bearer {}", self.api_key))
+                        .header("Content-Type", "application/json")
+                        .json(&req)
+                        .send()
+                        .await
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
-            if resp.status().is_success() {
-                resp.json::<ChatResponse>()
-                    .await
-                    .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })
-            } else {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                Err(RuntimeError::ProviderError {
-                    message: format!("API error {}: {}", status, body),
-                })
-            }
+                    let status = resp.status();
+                    if status.is_success() {
+                        resp.json::<ChatResponse>()
+                            .await
+                            .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })
+                    } else {
+                        let code = status.as_u16();
+                        let body = resp.text().await.unwrap_or_default();
+                        if code == 429 {
+                            Err(RuntimeError::RateLimitError { retry_after: None })
+                        } else {
+                            Err(RuntimeError::ProviderError {
+                                message: format!("API error {}: {}", code, body),
+                            })
+                        }
+                    }
+                }
+            }).await
         })
     }
 
@@ -144,23 +157,35 @@ impl LlmProvider for OpenAiProvider {
             request.stream = Some(true);
 
             let url = format!("{}/chat/completions", self.base_url);
-            let resp = self
-                .client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+            let policy = RetryPolicy::default();
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(RuntimeError::ProviderError {
-                    message: format!("OpenAI streaming API error {status}: {body}"),
-                });
-            }
+            let resp = with_retry(&policy, || {
+                let req = request.clone();
+                let url = url.clone();
+                async move {
+                    let r = self
+                        .client
+                        .post(&url)
+                        .header("Authorization", format!("Bearer {}", self.api_key))
+                        .header("Content-Type", "application/json")
+                        .json(&req)
+                        .send()
+                        .await
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
+
+                    let code = r.status().as_u16();
+                    if r.status().is_success() {
+                        Ok(r)
+                    } else if code == 429 {
+                        Err(RuntimeError::RateLimitError { retry_after: None })
+                    } else {
+                        let body = r.text().await.unwrap_or_default();
+                        Err(RuntimeError::ProviderError {
+                            message: format!("OpenAI streaming API error {code}: {body}"),
+                        })
+                    }
+                }
+            }).await?;
 
             let stream = resp
                 .bytes_stream()
