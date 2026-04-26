@@ -3,9 +3,12 @@
 use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider};
 use crate::tool::ToolRegistry;
 use crate::RuntimeError;
+use futures::Stream;
 use futures::StreamExt;
+use futures::TryStreamExt;
 use hermes_session_db::{SessionStore, Message, MessageRole};
 use serde_json::json;
+use std::pin::Pin;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -36,6 +39,14 @@ impl Default for AgentConfig {
     }
 }
 
+/// Token usage statistics from a provider response.
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
+}
+
 /// Response from agent execution
 #[derive(Debug)]
 pub struct AgentResponse {
@@ -43,11 +54,12 @@ pub struct AgentResponse {
     pub tool_calls_made: Vec<String>,
     pub turns_used: u32,
     pub session_id: Uuid,
+    pub token_usage: Option<TokenUsage>,
 }
 
 /// The core agent that orchestrates LLM ↔ tool ↔ session interactions
 pub struct Agent {
-    provider: Box<dyn LlmProvider>,
+    provider: Arc<dyn LlmProvider>,
     tools: Arc<ToolRegistry>,
     #[allow(clippy::arc_with_non_send_sync)]
     session_store: Arc<SessionStore>,
@@ -68,7 +80,7 @@ impl Agent {
     ) -> Self {
         let budget = Arc::new(IterationBudget::new(config.max_turns));
         Self {
-            provider,
+            provider: Arc::from(provider),
             tools: Arc::new(tools),
             session_store: Arc::new(session_store),
             config,
@@ -83,6 +95,11 @@ impl Agent {
     }
 
     /// Create a new session for this conversation
+    /// Get the tokenizer registry for accurate token counting.
+    fn tokenizer_registry(&self) -> crate::context::TokenizerRegistry {
+        crate::context::TokenizerRegistry::new()
+    }
+
     pub fn create_session(&self) -> Result<Uuid, RuntimeError> {
         let session = self
             .session_store
@@ -141,14 +158,15 @@ impl Agent {
             chat_messages.push(chat_msg);
         }
 
-        // Truncate if over token limit
-        chat_messages = crate::context::token_est::truncate_messages(chat_messages, self.config.max_context_tokens);
+        // Truncate if over token limit using model-specific tokenizer
+        let registry = self.tokenizer_registry();
+        chat_messages = registry.truncate_messages(&self.model, chat_messages, self.config.max_context_tokens);
 
         Ok(chat_messages)
     }
 
-    /// Append a message to the session
-    fn append_message(
+    /// Append a message to the session (public for ChatRepl streaming)
+    pub fn append_message(
         &self,
         session_id: &Uuid,
         role: MessageRole,
@@ -193,6 +211,7 @@ impl Agent {
                     tool_calls_made,
                     turns_used: turns,
                     session_id,
+                    token_usage: None,
                 });
             }
 
@@ -257,6 +276,7 @@ impl Agent {
                         message: ChatMessage::assistant(&full_content),
                         finish_reason,
                     }],
+                    usage: None,
                 }
             } else {
                 // Non-streaming mode
@@ -295,9 +315,24 @@ impl Agent {
                         for tc in tool_calls {
                             tool_calls_made.push(tc.function.name.clone());
 
-                            // Parse arguments JSON
-                            let params: serde_json::Value = serde_json::from_str(&tc.function.arguments)
-                                .unwrap_or(serde_json::Value::Object(Default::default()));
+                            // Parse arguments JSON — on failure, store error as tool result
+                            // so the LLM can see what went wrong and retry with valid JSON.
+                            let params: serde_json::Value = match serde_json::from_str(&tc.function.arguments) {
+                                Ok(v) => v,
+                                Err(parse_err) => {
+                                    let error_msg = format!(
+                                        "JSON parse error for tool '{}' arguments: {}. Raw args: {}",
+                                        tc.function.name, parse_err, tc.function.arguments
+                                    );
+                                    tracing::warn!("{}", error_msg);
+                                    // Store the parse error as a tool result so LLM sees it
+                                    self.session_store
+                                        .append_message(&session_id, MessageRole::Tool, &error_msg)
+                                        .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+                                    // Continue to next tool call
+                                    continue;
+                                }
+                            };
 
                             // Dispatch tool with timeout
                             let tool_result = tokio::time::timeout(
@@ -334,11 +369,18 @@ impl Agent {
                 current_content = msg.text().to_string();
                 self.append_message(&session_id, MessageRole::Assistant, &current_content)?;
 
+                let token_usage = response.usage.map(|u| crate::agent::TokenUsage {
+                    input_tokens: u.input_tokens,
+                    output_tokens: u.output_tokens,
+                    total_tokens: u.total_tokens,
+                });
+
                 return Ok(AgentResponse {
                     content: current_content,
                     tool_calls_made,
                     turns_used: self.budget.used(),
                     session_id,
+                    token_usage,
                 });
             }
         }
@@ -386,6 +428,101 @@ impl Agent {
     pub fn list_tools(&self) -> Vec<(&str, &str)> {
         self.tools.list()
     }
+
+    /// Check whether streaming mode is enabled
+    pub fn streaming_enabled(&self) -> bool {
+        self.config.streaming
+    }
+
+    /// Append an assistant message to the session (public for ChatRepl streaming)
+    pub fn append_assistant_message(
+        &self,
+        session_id: &Uuid,
+        content: &str,
+    ) -> Result<Message, RuntimeError> {
+        self.append_message(session_id, MessageRole::Assistant, content)
+    }
+
+    /// Stream one turn of the agent loop, yielding content deltas as they arrive.
+    ///
+    /// The caller (ChatRepl) iterates the returned stream to print tokens in
+    /// real-time. After the stream completes, the caller should call
+    /// `append_assistant_message` to persist the full response.
+    ///
+    /// Returns a stream of `Result<String, RuntimeError>` where each `String`
+    /// is a content delta from the LLM.
+    pub fn stream_turn(
+        &self,
+        session_id: Uuid,
+    ) -> Pin<Box<dyn Stream<Item = Result<String, RuntimeError>> + Send>> {
+        // Build request from current session history
+        let messages = match self.build_messages(&session_id) {
+            Ok(m) => m,
+            Err(e) => {
+                return Box::pin(futures::stream::once(async move { Err(e) }));
+            }
+        };
+
+        let tool_defs = self.tools.tool_definitions();
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages,
+            tools: if tool_defs.is_empty() {
+                None
+            } else {
+                Some(json!(tool_defs))
+            },
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            stream: Some(true),
+        };
+
+        let timeout_secs = self.config.timeout_secs;
+        let provider = Arc::clone(&self.provider);
+
+        let stream = futures::stream::once(async move {
+            // Resolve the future that gives us the underlying SSE stream
+            let stream_result = tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                provider.chat_completion_stream(request),
+            )
+            .await;
+
+            match stream_result {
+                Ok(Ok(sse_stream)) => Ok(sse_stream),
+                Ok(Err(e)) => Err(e),
+                Err(_) => Err(RuntimeError::TimeoutError {
+                    duration_secs: timeout_secs,
+                }),
+            }
+        })
+        .try_flatten()
+        .map(|chunk_result| {
+            // Extract the content delta from each StreamChunk
+            match chunk_result {
+                Ok(chunk) => {
+                    if let Some(choice) = chunk.choices.first() {
+                        if let Some(ref content) = choice.delta.content {
+                            return Ok(content.clone());
+                        }
+                    }
+                    // Empty delta (e.g. role-only chunk) — skip by yielding empty
+                    Ok(String::new())
+                }
+                Err(e) => Err(e),
+            }
+        })
+        .filter(|result| {
+            // Filter out empty deltas so the caller only gets real content
+            let keep = match result {
+                Ok(s) => !s.is_empty(),
+                Err(_) => true,
+            };
+            std::future::ready(keep)
+        });
+
+        Box::pin(stream)
+    }
 }
 
 #[cfg(test)]
@@ -427,6 +564,7 @@ mod tests {
                         message: ChatMessage::assistant(&content),
                         finish_reason: Some("stop".to_string()),
                     }],
+                    usage: None,
                 })
             })
         }
@@ -525,5 +663,115 @@ mod tests {
         let session_id = agent.create_session().unwrap();
         let response = agent.run_turn(session_id, "test").await.unwrap();
         assert!(response.content.contains("Response 1") || response.turns_used <= 1);
+    }
+
+    // Mock provider that returns a tool call with invalid JSON args on first call,
+    // then a plain text response on the second call.
+    struct MockProviderBadToolArgs {
+        call_count: AtomicU32,
+    }
+
+    impl MockProviderBadToolArgs {
+        fn new() -> Self { Self { call_count: AtomicU32::new(0) } }
+    }
+
+    impl LlmProvider for MockProviderBadToolArgs {
+        fn chat_completion(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
+            Box::pin(async move {
+                let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if idx == 0 {
+                    // Return a tool call with invalid JSON arguments
+                    Ok(ChatResponse {
+                        choices: vec![ChatChoice {
+                            message: ChatMessage {
+                                role: "assistant".to_string(),
+                                content: None,
+                                tool_calls: Some(vec![crate::provider::ToolCall {
+                                    id: "call_bad".to_string(),
+                                    tool_type: "function".to_string(),
+                                    function: crate::provider::FunctionCall {
+                                        name: "mock_tool".to_string(),
+                                        arguments: "{invalid json!!!}".to_string(),
+                                    },
+                                }]),
+                                tool_call_id: None,
+                                cache_control: None,
+                            },
+                            finish_reason: Some("tool_calls".to_string()),
+                        }],
+                        usage: None,
+                    })
+                } else {
+                    // Second call: plain text after seeing the error
+                    Ok(ChatResponse {
+                        choices: vec![ChatChoice {
+                            message: ChatMessage::assistant("I saw the parse error and fixed it"),
+                            finish_reason: Some("stop".to_string()),
+                        }],
+                        usage: None,
+                    })
+                }
+            })
+        }
+
+        fn chat_completion_stream(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
+            Box::pin(async { Err(RuntimeError::ProviderError { message: "no stream".into() }) })
+        }
+
+        fn name(&self) -> &str { "mock_bad_args" }
+        fn default_model(&self) -> &str { "mock" }
+    }
+
+    #[tokio::test]
+    async fn test_tool_json_parse_error() {
+        let provider = Box::new(MockProviderBadToolArgs::new());
+        let mut tools = ToolRegistry::new();
+        tools.register(Box::new(MockTool));
+
+        let store = SessionStore::new_in_memory().unwrap();
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
+        let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
+
+        let session_id = agent.create_session().unwrap();
+        let response = agent.run_turn(session_id, "call the tool").await.unwrap();
+
+        // Agent should recover: LLM sees the parse error as a tool result and responds
+        assert!(response.content.contains("parse error") || response.content.contains("fixed"));
+
+        // The session should contain a Tool message with the parse error
+        let messages = agent.get_history(&session_id).unwrap();
+        let tool_msgs: Vec<_> = messages.iter()
+            .filter(|m| m.role == MessageRole::Tool)
+            .collect();
+        assert!(!tool_msgs.is_empty(), "Expected at least one tool message with parse error");
+        assert!(
+            tool_msgs.iter().any(|m| m.content.contains("JSON parse error") || m.content.contains("parse error")),
+            "Tool message should contain parse error info"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tool_missing_required_field() {
+        // Verify that valid JSON with missing fields still executes (tool handles it)
+        // and that the tool result is stored in session
+        let provider = Box::new(MockProvider::new(vec![
+            // First response: tool call with empty JSON object (missing fields)
+            // We can't easily inject tool_calls via MockProvider, so test via direct dispatch
+            "Final answer".to_string(),
+        ]));
+        let mut tools = ToolRegistry::new();
+        tools.register(Box::new(MockTool));
+
+        let store = SessionStore::new_in_memory().unwrap();
+        let config = AgentConfig { streaming: false, ..AgentConfig::default() };
+        let mut agent = Agent::new(provider, tools, store, config, "test-model".to_string());
+
+        let session_id = agent.create_session().unwrap();
+
+        // Execute tool directly with empty params (missing required fields)
+        let result = agent.execute_tool(&session_id, "mock_tool", json!({})).await;
+        // MockTool ignores params, so it should succeed
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "mock tool result");
     }
 }
