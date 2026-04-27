@@ -154,31 +154,269 @@ pub trait LlmProvider: Send + Sync {
     fn default_model(&self) -> &str;
 }
 
-pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, base_url: Option<&str>) 
-    -> Box<dyn LlmProvider> {
+// =============================================================================
+// ProviderConfig — static configuration for a provider endpoint
+// =============================================================================
+
+/// Static configuration describing how to talk to a provider's API.
+#[derive(Debug, Clone)]
+pub struct ProviderConfig {
+    pub base_url: String,
+    pub auth_header: String,
+    pub auth_prefix: String,
+    pub default_model: String,
+    pub supports_streaming: bool,
+    pub supports_tools: bool,
+}
+
+// =============================================================================
+// ProviderRegistry — maps Provider enum variants to ProviderConfig
+// =============================================================================
+
+/// Zero-sized type providing a static registry of provider configurations.
+pub struct ProviderRegistry;
+
+impl ProviderRegistry {
+    /// Return the [`ProviderConfig`] for the given provider.
+    ///
+    /// For providers that require a user-supplied endpoint (e.g. Azure, Custom)
+    /// the `base_url` will be an empty string.
+    pub fn config(provider: &hermes_common::Provider) -> ProviderConfig {
+        use hermes_common::Provider::*;
+
+        match provider {
+            // --- OpenAI-compatible ---
+            OpenAI => ProviderConfig {
+                base_url: "https://api.openai.com/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "gpt-4o".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            OpenRouter => ProviderConfig {
+                base_url: "https://openrouter.ai/api/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "openai/gpt-4o".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Ollama => ProviderConfig {
+                base_url: "http://localhost:11434".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "llama3".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Azure => ProviderConfig {
+                base_url: String::new(),
+                auth_header: "api-key".into(),
+                auth_prefix: String::new(),
+                default_model: "gpt-4o".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+
+            // --- Anthropic (own API format) ---
+            Anthropic => ProviderConfig {
+                base_url: "https://api.anthropic.com/v1".into(),
+                auth_header: "x-api-key".into(),
+                auth_prefix: String::new(),
+                default_model: "claude-sonnet-4-20250514".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+
+            // --- Google ---
+            Gemini => ProviderConfig {
+                base_url: "https://generativelanguage.googleapis.com/v1beta".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "gemini-2.5-pro".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+
+            // --- Chinese providers ---
+            Zai => ProviderConfig {
+                base_url: "https://open.bigmodel.cn/api/paas/v4".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "glm-5".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Kimi => ProviderConfig {
+                base_url: "https://api.moonshot.cn/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "kimi-k2.5".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            KimiCn => ProviderConfig {
+                base_url: "https://api.moonshot.cn/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "kimi-k2.5".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            MiniMax => ProviderConfig {
+                base_url: "https://api.minimax.chat/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "MiniMax-M2.7".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            MiniMaxCn => ProviderConfig {
+                base_url: "https://api.minimax.chat/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "MiniMax-M2.7".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+
+            // --- Other providers ---
+            Arcee => ProviderConfig {
+                base_url: "https://api.arcee.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "trinity-large-thinking".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            AiGateway => ProviderConfig {
+                base_url: "https://aigateway.nousresearch.com/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "anthropic/claude-sonnet-4-6".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Kilocode => ProviderConfig {
+                base_url: "https://api.kilocode.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "anthropic/claude-sonnet-4-6".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            OpenCodeZen => ProviderConfig {
+                base_url: "https://api.opencode.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "gpt-5.4".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            OpenCodeGo => ProviderConfig {
+                base_url: "https://api.opencode.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "glm-5".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Copilot => ProviderConfig {
+                base_url: String::new(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "gpt-5.4".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            CopilotAcp => ProviderConfig {
+                base_url: String::new(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "copilot-acp".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            HuggingFace => ProviderConfig {
+                base_url: "https://api-inference.huggingface.co/models".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "Qwen/Qwen3.5-397B-A17B".into(),
+                supports_streaming: true,
+                supports_tools: false,
+            },
+            DeepSeek => ProviderConfig {
+                base_url: "https://api.deepseek.com/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "deepseek-chat".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Groq => ProviderConfig {
+                base_url: "https://api.groq.com/openai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "llama-3.1-70b-versatile".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Custom => ProviderConfig {
+                base_url: String::new(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "custom".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+        }
+    }
+
+    /// Return every known provider alongside its static config.
+    pub fn all_providers() -> Vec<(&'static str, ProviderConfig)> {
+        hermes_common::Provider::all_providers()
+            .iter()
+            .map(|p| (p.as_str(), Self::config(p)))
+            .collect()
+    }
+}
+
+// =============================================================================
+// Provider factory
+// =============================================================================
+
+pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, base_url: Option<&str>)
+    -> Box<dyn LlmProvider>
+{
+    let cfg = ProviderRegistry::config(provider_type);
+
+    // Prefer caller-supplied base_url, then the registry config, then a
+    // sensible fallback for truly dynamic providers (Azure, Custom).
+    let url = base_url.map(str::to_string).unwrap_or_else(|| {
+        if cfg.base_url.is_empty() {
+            match provider_type {
+                hermes_common::Provider::Anthropic => "https://api.anthropic.com/v1".to_string(),
+                _ => "https://api.openai.com/v1".to_string(),
+            }
+        } else {
+            cfg.base_url.clone()
+        }
+    });
+
     match provider_type {
         hermes_common::Provider::Anthropic => {
-            let default_base = provider_type.default_base_url();
-            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.anthropic.com/v1" } else { default_base });
-            let model = provider_type.default_model();
             Box::new(crate::provider::anthropic::AnthropicProvider::new(
-                api_key.to_string(), Some(url), Some(model),
-            ))
-        }
-        hermes_common::Provider::Groq => {
-            let default_base = provider_type.default_base_url();
-            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.groq.com/openai/v1" } else { default_base });
-            let model = provider_type.default_model();
-            Box::new(crate::provider::openai::OpenAiProvider::new(
-                api_key.to_string(), Some(url), Some(model),
+                api_key.to_string(),
+                Some(&url),
+                Some(&cfg.default_model),
             ))
         }
         _ => {
-            let default_base = provider_type.default_base_url();
-            let url = base_url.unwrap_or(if default_base.is_empty() { "https://api.openai.com/v1" } else { default_base });
-            let model = provider_type.default_model();
             Box::new(crate::provider::openai::OpenAiProvider::new(
-                api_key.to_string(), Some(url), Some(model),
+                api_key.to_string(),
+                Some(&url),
+                Some(&cfg.default_model),
             ))
         }
     }
@@ -261,5 +499,103 @@ mod tests {
         let provider = create_provider(&Provider::Groq, "test-key", None);
         assert_eq!(provider.name(), "openai");
         assert_eq!(provider.default_model(), "llama-3.1-70b-versatile");
+    }
+
+    // =========================================================================
+    // ProviderConfig / ProviderRegistry tests
+    // =========================================================================
+
+    #[test]
+    fn test_registry_config_openai() {
+        let cfg = ProviderRegistry::config(&Provider::OpenAI);
+        assert_eq!(cfg.base_url, "https://api.openai.com/v1");
+        assert_eq!(cfg.auth_header, "Authorization");
+        assert_eq!(cfg.auth_prefix, "Bearer ");
+        assert_eq!(cfg.default_model, "gpt-4o");
+        assert!(cfg.supports_streaming);
+        assert!(cfg.supports_tools);
+    }
+
+    #[test]
+    fn test_registry_config_anthropic() {
+        let cfg = ProviderRegistry::config(&Provider::Anthropic);
+        assert_eq!(cfg.base_url, "https://api.anthropic.com/v1");
+        assert_eq!(cfg.auth_header, "x-api-key");
+        assert!(cfg.auth_prefix.is_empty());
+        assert_eq!(cfg.default_model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_registry_config_azure() {
+        let cfg = ProviderRegistry::config(&Provider::Azure);
+        assert!(cfg.base_url.is_empty());
+        assert_eq!(cfg.auth_header, "api-key");
+        assert!(cfg.auth_prefix.is_empty());
+    }
+
+    #[test]
+    fn test_registry_config_groq() {
+        let cfg = ProviderRegistry::config(&Provider::Groq);
+        assert_eq!(cfg.base_url, "https://api.groq.com/openai/v1");
+        assert_eq!(cfg.default_model, "llama-3.1-70b-versatile");
+    }
+
+    #[test]
+    fn test_registry_config_deepseek() {
+        let cfg = ProviderRegistry::config(&Provider::DeepSeek);
+        assert_eq!(cfg.base_url, "https://api.deepseek.com/v1");
+        assert_eq!(cfg.default_model, "deepseek-chat");
+    }
+
+    #[test]
+    fn test_registry_config_ollama() {
+        let cfg = ProviderRegistry::config(&Provider::Ollama);
+        assert_eq!(cfg.base_url, "http://localhost:11434");
+        assert_eq!(cfg.default_model, "llama3");
+    }
+
+    #[test]
+    fn test_registry_config_huggingface_no_tools() {
+        let cfg = ProviderRegistry::config(&Provider::HuggingFace);
+        assert!(!cfg.supports_tools);
+    }
+
+    #[test]
+    fn test_registry_all_providers_completeness() {
+        let all = ProviderRegistry::all_providers();
+        // Must cover every variant in Provider::all_providers()
+        let enum_count = Provider::all_providers().len();
+        assert_eq!(all.len(), enum_count);
+        // Spot-check a few entries
+        assert!(all.iter().any(|(name, _)| *name == "openai"));
+        assert!(all.iter().any(|(name, _)| *name == "anthropic"));
+        assert!(all.iter().any(|(name, _)| *name == "groq"));
+        assert!(all.iter().any(|(name, _)| *name == "deepseek"));
+    }
+
+    #[test]
+    fn test_registry_config_matches_default_model() {
+        // Every ProviderConfig.default_model must match Provider::default_model()
+        for p in Provider::all_providers() {
+            let cfg = ProviderRegistry::config(p);
+            assert_eq!(
+                cfg.default_model, p.default_model(),
+                "model mismatch for provider {:?}",
+                p
+            );
+        }
+    }
+
+    #[test]
+    fn test_registry_config_matches_default_base_url() {
+        // Every ProviderConfig.base_url must match Provider::default_base_url()
+        for p in Provider::all_providers() {
+            let cfg = ProviderRegistry::config(p);
+            assert_eq!(
+                cfg.base_url, p.default_base_url(),
+                "base_url mismatch for provider {:?}",
+                p
+            );
+        }
     }
 }

@@ -9,7 +9,9 @@
       "Bash(git add *)",
       "Bash(git rm *)",
       "Bash(git commit -m 'feat: Wave 1 infrastructure — tokenizer, model metadata, Groq provider, CLI modules *)",
-      "Bash(git commit -m 'feat: display engine, system prompt builder, /compact, Ctrl+C handling *)"
+      "Bash(git commit -m 'feat: display engine, system prompt builder, /compact, Ctrl+C handling *)",
+      "Bash(git commit -m 'feat: streaming tool calls, Anthropic tool_use support, markdown renderer *)",
+      "Bash(git commit -m 'docs: update README with current features, add CHANGELOG *)"
     ]
   }
 }
