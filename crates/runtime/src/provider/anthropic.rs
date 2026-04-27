@@ -213,12 +213,24 @@ impl LlmProvider for AnthropicProvider {
                             .unwrap_or("")
                             .to_string();
 
+                        // Parse Anthropic usage block:
+                        // { "input_tokens": N, "output_tokens": N }
+                        let usage = raw.get("usage").map(|u| {
+                            let input = u["input_tokens"].as_u64().unwrap_or(0) as u32;
+                            let output = u["output_tokens"].as_u64().unwrap_or(0) as u32;
+                            crate::provider::TokenUsage {
+                                input_tokens: input,
+                                output_tokens: output,
+                                total_tokens: input + output,
+                            }
+                        });
+
                         Ok(ChatResponse {
                             choices: vec![crate::provider::ChatChoice {
                                 message: crate::provider::ChatMessage::assistant(&content),
                                 finish_reason: raw["stop_reason"].as_str().map(|s| s.to_string()),
                             }],
-                            usage: None,
+                            usage,
                         })
                     } else if code == 429 {
                         Err(RuntimeError::RateLimitError { retry_after: None })

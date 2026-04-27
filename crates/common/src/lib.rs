@@ -3,6 +3,7 @@
 //! Shared types, errors, and utilities for Hermes crates.
 
 pub mod error;
+pub mod model_metadata;
 pub mod provider;
 pub mod string;
 pub mod types;

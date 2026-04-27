@@ -2,7 +2,9 @@
 
 use crate::agent::{Agent, AgentResponse};
 use crate::RuntimeError;
+use futures::StreamExt;
 use hermes_session_db::MessageRole;
+use std::io::Write;
 use uuid::Uuid;
 
 /// Interactive chat REPL
@@ -38,7 +40,61 @@ impl ChatRepl {
             return self.handle_command(cmd).await;
         }
 
-        self.agent.run_turn(self.session_id, input).await
+        // Use streaming mode if enabled
+        if self.agent.streaming_enabled() {
+            self.run_turn_streaming(input).await
+        } else {
+            self.agent.run_turn(self.session_id, input).await
+        }
+    }
+
+    /// Run one turn with real-time streaming token display.
+    ///
+    /// Prints each content delta to stdout as it arrives from the LLM,
+    /// then persists the full response to the session.
+    async fn run_turn_streaming(&mut self, input: &str) -> Result<AgentResponse, RuntimeError> {
+        // Append user message first
+        self.agent
+            .append_message(&self.session_id, MessageRole::User, input)?;
+
+        // Show typing indicator
+        print!("Assistant: ");
+        let _ = std::io::stdout().flush();
+
+        // Stream content deltas from agent
+        let mut stream = self.agent.stream_turn(self.session_id);
+        let mut full_content = String::new();
+
+        while let Some(delta_result) = stream.next().await {
+            match delta_result {
+                Ok(delta) => {
+                    // Print each token immediately
+                    print!("{}", delta);
+                    let _ = std::io::stdout().flush();
+                    full_content.push_str(&delta);
+                }
+                Err(e) => {
+                    // Print newline for clean error display
+                    println!();
+                    return Err(e);
+                }
+            }
+        }
+
+        // Final newline after streaming completes
+        println!();
+
+        // Persist the full assistant response to session
+        self.agent
+            .append_assistant_message(&self.session_id, &full_content)?;
+
+        Ok(AgentResponse {
+            content: full_content,
+            tool_calls_made: vec![], // Streaming path doesn't handle tool calls
+            turns_used: self.agent.turns_used(),
+            session_id: self.session_id,
+            token_usage: None,
+        })
     }
 
     /// Handle slash commands
@@ -59,6 +115,7 @@ impl ChatRepl {
                     tool_calls_made: vec![],
                     turns_used: 0,
                     session_id: self.session_id,
+                    token_usage: None,
                 })
             }
             "history" => {
@@ -84,29 +141,54 @@ impl ChatRepl {
                     tool_calls_made: vec![],
                     turns_used: self.agent.turns_used(),
                     session_id: self.session_id,
+                    token_usage: None,
                 })
             }
             "help" => Ok(AgentResponse {
-                    content: "Commands:\n  /quit, /exit, /q  — Exit REPL\n  /new, /reset      — Start new session\n  /history           — Show message history\n  /model [name]      — Show or change model\n  /tools              — List available tools\n  /compact            — Compact context (truncate old messages)\n  /save [name]        — Save current session\n  /help               — Show this help".to_string(),
+                    content: "Commands:\n  /quit, /exit, /q  — Exit REPL\n  /new, /reset      — Start new session\n  /history           — Show message history\n  /model             — Show current model\n  /model <name>      — Change model\n  /model list        — List known models\n  /system            — Show current system prompt\n  /tools              — List available tools\n  /compact            — Compact context (truncate old messages)\n  /save [name]        — Save current session\n  /help               — Show this help".to_string(),
                     tool_calls_made: vec![],
                     turns_used: self.agent.turns_used(),
                     session_id: self.session_id,
+                    token_usage: None,
                 }),
             "model" => {
-                let current = self.agent.model_name();
                 if _args.is_empty() {
+                    // /model — show current model
+                    let current = self.agent.model_name();
                     Ok(AgentResponse {
                         content: format!("Current model: {}", current),
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
+                        token_usage: None,
                     })
-                } else {
+                } else if _args == "list" || _args == "--list" {
+                    // /model list — show known models grouped by provider
+                    let groups = Agent::known_models();
+                    let mut output = String::from("Known models:\n");
+                    for (provider, models) in &groups {
+                        output.push_str(&format!("\n  [{}]\n", provider));
+                        for m in models {
+                            output.push_str(&format!("    {}\n", m));
+                        }
+                    }
                     Ok(AgentResponse {
-                        content: format!("Model change not yet supported in this version. Current: {}", current),
+                        content: output,
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
+                        token_usage: None,
+                    })
+                } else {
+                    // /model <name> — change model
+                    let new_model = _args.trim().to_string();
+                    self.agent.set_model(new_model.clone());
+                    Ok(AgentResponse {
+                        content: format!("Model changed to: {}", new_model),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                        token_usage: None,
                     })
                 }
             }
@@ -118,6 +200,7 @@ impl ChatRepl {
                     tool_calls_made: vec![],
                     turns_used: self.agent.turns_used(),
                     session_id: self.session_id,
+                    token_usage: None,
                 })
             }
             "compact" => {
@@ -130,6 +213,7 @@ impl ChatRepl {
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
+                        token_usage: None,
                     })
                 } else {
                     Ok(AgentResponse {
@@ -137,6 +221,7 @@ impl ChatRepl {
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
+                        token_usage: None,
                     })
                 }
             }
@@ -146,6 +231,7 @@ impl ChatRepl {
                     tool_calls_made: vec![],
                     turns_used: self.agent.turns_used(),
                     session_id: self.session_id,
+                    token_usage: None,
                 })
             }
             _ => Ok(AgentResponse {
@@ -153,6 +239,7 @@ impl ChatRepl {
                 tool_calls_made: vec![],
                 turns_used: self.agent.turns_used(),
                 session_id: self.session_id,
+                token_usage: None,
             }),
         }
     }
@@ -165,6 +252,17 @@ impl ChatRepl {
     /// Get message history
     pub fn get_history(&self) -> Result<Vec<hermes_session_db::Message>, RuntimeError> {
         self.agent.get_history(&self.session_id)
+    }
+
+    /// Graceful shutdown: save session state and print farewell.
+    ///
+    /// Called when the user presses Ctrl+C or the REPL exits cleanly.
+    /// Returns the session ID for reference.
+    pub fn graceful_shutdown(&self) -> Uuid {
+        // Session messages are already persisted on each turn via append_message,
+        // so there's nothing extra to flush. This method exists as a hook for
+        // future cleanup (temp files, MCP connections, etc.).
+        self.session_id
     }
 }
 
@@ -203,6 +301,7 @@ mod tests {
                         message: ChatMessage::assistant(&content),
                         finish_reason: Some("stop".to_string()),
                     }],
+                    usage: None,
                 })
             })
         }
@@ -253,5 +352,54 @@ mod tests {
         let old_session = repl.session_id();
         let result = repl.run_turn("/new").await.unwrap();
         assert_ne!(result.session_id, old_session);
+    }
+
+    #[tokio::test]
+    async fn test_model_show_current() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/model").await.unwrap();
+        assert!(result.content.contains("test-model"));
+    }
+
+    #[tokio::test]
+    async fn test_model_change() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/model gpt-4o").await.unwrap();
+        assert_eq!(result.content, "Model changed to: gpt-4o");
+        // Verify it stuck
+        let result2 = repl.run_turn("/model").await.unwrap();
+        assert!(result2.content.contains("gpt-4o"));
+    }
+
+    #[tokio::test]
+    async fn test_model_list() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/model list").await.unwrap();
+        assert!(result.content.contains("Known models:"));
+        assert!(result.content.contains("[openai]"));
+        assert!(result.content.contains("gpt-4o"));
+        assert!(result.content.contains("[anthropic]"));
+    }
+
+    #[tokio::test]
+    async fn test_model_list_flag() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/model --list").await.unwrap();
+        assert!(result.content.contains("Known models:"));
+    }
+
+    #[tokio::test]
+    async fn test_known_models_not_empty() {
+        let models = Agent::known_models();
+        assert!(!models.is_empty());
+        // Each group should have at least one model
+        for (provider, model_list) in &models {
+            assert!(!provider.is_empty());
+            assert!(!model_list.is_empty());
+        }
     }
 }

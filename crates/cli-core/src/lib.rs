@@ -11,8 +11,13 @@ pub mod config;
 pub mod cron;
 pub mod error;
 pub mod gateway;
+pub mod mcp;
+pub mod pairings;
+pub mod plugins;
+pub mod profiles;
 pub mod skills;
 pub mod tools;
+pub mod webhooks;
 
 pub use config::Config;
 pub use error::CliError;
@@ -957,12 +962,6 @@ pub async fn run() -> Result<()> {
 
     let _config = Config::load()?;
 
-    // Handle top-level --resume/--continue as shortcut to chat
-    if (cli.resume.is_some() || cli.continue_last.is_some()) && cli.command.is_none() {
-        println!("Resuming session (coming soon)");
-        return Ok(());
-    }
-
     // Default to chat if no command specified
     let command = cli.command.unwrap_or(Commands::Chat {
         model: None,
@@ -1005,24 +1004,26 @@ pub async fn run() -> Result<()> {
         Commands::Uninstall { full: _, yes: _ } => commands::handle_uninstall()?,
         // Stub handlers for new commands
         Commands::Sessions(cmd) => commands::handle_sessions(cmd.clone()),
-        Commands::Logs { .. } => println!("Logs command coming soon"),
+        Commands::Logs { log_name, lines, follow, level, session, since, component } =>
+            commands::handle_logs(log_name.as_deref(), *lines, *follow, level.as_deref(), session.as_deref(), since.as_deref(), component.as_deref())?,
         Commands::Profile(cmd) => commands::handle_profile(cmd.clone()),
         Commands::Mcp(cmd) => commands::handle_mcp(cmd.clone()),
-        Commands::Memory(cmd) => commands::handle_memory(cmd.clone()),
+        Commands::Memory(cmd) => commands::handle_memory(cmd.clone())?,
         Commands::Webhook(cmd) => commands::handle_webhook(cmd.clone()),
         Commands::Pairing(cmd) => commands::handle_pairing(cmd.clone()),
         Commands::Plugins(cmd) => commands::handle_plugins(cmd.clone()),
-        Commands::Backup { .. } => println!("Backup command coming soon"),
-        Commands::Import { .. } => println!("Import command coming soon"),
+        Commands::Backup { output, quick, label } => commands::handle_backup(output.clone(), *quick, label.clone())?,
+        Commands::Import { zipfile, force } => commands::handle_import(zipfile.clone(), *force)?,
         Commands::Debug(cmd) => commands::handle_debug(cmd.clone()),
-        Commands::Dump { .. } => println!("Dump command coming soon"),
-        Commands::Completion { .. } => println!("Completion command coming soon"),
-        Commands::Insights { .. } => println!("Insights command coming soon"),
-        Commands::Login { .. } => println!("Login command coming soon"),
-        Commands::Logout { .. } => println!("Logout command coming soon"),
-        Commands::Whatsapp => println!("WhatsApp setup coming soon"),
-        Commands::Acp => println!("ACP server mode coming soon"),
-        Commands::Dashboard { .. } => println!("Dashboard coming soon"),
+        Commands::Dump { show_keys } => commands::handle_dump(*show_keys)?,
+        Commands::Completion { shell } => commands::handle_completion(shell.as_deref()),
+        Commands::Insights { days, source } => commands::handle_insights(*days, source.as_deref())?,
+        Commands::Login { provider, portal_url, inference_url, client_id, scope, no_browser, timeout, ca_bundle, insecure } =>
+            commands::handle_login(provider.as_deref(), portal_url.as_deref(), inference_url.as_deref(), client_id.as_deref(), scope.as_deref(), *no_browser, *timeout, ca_bundle.as_deref(), *insecure)?,
+        Commands::Logout { provider } => commands::handle_logout(provider.as_deref())?,
+        Commands::Whatsapp => commands::handle_whatsapp()?,
+        Commands::Acp => commands::handle_acp()?,
+        Commands::Dashboard { port, host, no_open } => commands::handle_dashboard(*port, host.to_string(), *no_open)?,
         Commands::Claw(cmd) => commands::handle_claw(cmd.clone()),
     }
     Ok(())
@@ -1100,7 +1101,7 @@ async fn handle_chat(
     registry.register(Box::new(FileReadTool));
     registry.register(Box::new(FileWriteTool));
     registry.register(Box::new(FileSearchTool));
-    registry.register(Box::new(WebSearchTool));
+    registry.register(Box::new(WebSearchTool::new()));
     registry.register(Box::new(McpTool));
     registry.register(Box::new(BrowserTool));
 
@@ -1139,30 +1140,56 @@ async fn handle_chat(
         let mut repl = ChatRepl::new(agent)
             .map_err(|e| anyhow::anyhow!("Failed to create REPL: {}", e))?;
 
-        // Simple REPL loop using stdin
-        use std::io::{self, Write};
+        // Async REPL loop with Ctrl+C handling
+        use std::io::Write;
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let stdin = BufReader::new(tokio::io::stdin());
+        let mut lines = stdin.lines();
+
         loop {
             if !quiet {
                 print!("> ");
-                io::stdout().flush()?;
-            }
-            let mut input = String::new();
-            match io::stdin().read_line(&mut input) {
-                Ok(0) => break, // EOF
-                Ok(_) => {}
-                Err(e) => anyhow::bail!("Input error: {}", e),
+                let _ = std::io::stdout().flush();
             }
 
-            let input = input.trim();
+            // Race between next input line and Ctrl+C
+            let line = tokio::select! {
+                result = lines.next_line() => {
+                    match result {
+                        Ok(Some(line)) => line,
+                        Ok(None) => break, // EOF
+                        Err(e) => anyhow::bail!("Input error: {}", e),
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!();
+                    let session_id = repl.graceful_shutdown();
+                    println!("Interrupted. Session {} saved. Goodbye!", session_id);
+                    break;
+                }
+            };
+
+            let input = line.trim();
             if input.is_empty() {
                 continue;
             }
 
-            match repl.run_turn(input).await {
+            // Run the turn, but allow Ctrl+C to cancel long-running LLM calls
+            let turn_result = tokio::select! {
+                result = repl.run_turn(input) => result,
+                _ = tokio::signal::ctrl_c() => {
+                    println!("\nInterrupted current request.");
+                    continue;
+                }
+            };
+
+            match turn_result {
                 Ok(response) => println!("{}", response.content),
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("REPL exited") {
+                        let _ = repl.graceful_shutdown();
                         println!("Goodbye!");
                         break;
                     }

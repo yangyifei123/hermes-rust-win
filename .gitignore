@@ -40,3 +40,4 @@ hermes_home/
 # IDE
 .vscode/
 .idea/
+.claude/worktrees/

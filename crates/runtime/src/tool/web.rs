@@ -87,8 +87,8 @@ impl Tool for WebSearchTool {
                         })
                     }
                 }
-                Ok(resp) => Ok(ToolOutput::error(&format!("Search failed: HTTP {}", resp.status()))),
-                Err(e) => Ok(ToolOutput::error(&format!("Search request failed: {}", e))),
+                Ok(resp) => Ok(ToolOutput::error(format!("Search failed: HTTP {}", resp.status()))),
+                Err(e) => Ok(ToolOutput::error(format!("Search request failed: {}", e))),
             }
         })
     }

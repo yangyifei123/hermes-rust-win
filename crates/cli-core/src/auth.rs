@@ -41,8 +41,7 @@ impl AuthStore {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create auth directory {:?}", parent))?;
         }
-        let content = serde_yaml::to_string(self)
-            .context("failed to serialize auth store")?;
+        let content = serde_yaml::to_string(self).context("failed to serialize auth store")?;
 
         // Atomic write: write to temp file first
         let temp_path = path.with_extension("tmp");
@@ -62,10 +61,7 @@ impl AuthStore {
         {
             use std::process::Command;
             // Set file as hidden
-            let _ = Command::new("attrib")
-                .arg("+H")
-                .arg(&temp_path)
-                .output();
+            let _ = Command::new("attrib").arg("+H").arg(&temp_path).output();
         }
 
         // Atomic rename (overwrites existing file)
@@ -76,12 +72,14 @@ impl AuthStore {
     }
 
     /// Get auth path
-    fn auth_path() -> PathBuf {
+    pub fn auth_path() -> PathBuf {
         if let Ok(home) = std::env::var("HERMES_HOME") {
             return PathBuf::from(home).join("credentials.yaml");
         }
         if let Ok(profile) = std::env::var("HERMES_PROFILE") {
-            if let Some(proj_dirs) = ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile)) {
+            if let Some(proj_dirs) =
+                ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile))
+            {
                 return proj_dirs.config_dir().join("credentials.yaml");
             }
         }
@@ -111,13 +109,7 @@ impl AuthStore {
     pub fn list(&self) -> Vec<(String, String, Option<String>)> {
         self.credentials
             .iter()
-            .map(|c| {
-                (
-                    c.provider.clone(),
-                    mask_key(&c.api_key),
-                    c.base_url.clone(),
-                )
-            })
+            .map(|c| (c.provider.clone(), mask_key(&c.api_key), c.base_url.clone()))
             .collect()
     }
 

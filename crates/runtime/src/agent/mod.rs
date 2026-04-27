@@ -424,6 +424,26 @@ impl Agent {
         &self.model
     }
 
+    /// Change the model used by this agent.
+    pub fn set_model(&mut self, model: String) {
+        self.model = model;
+    }
+
+    /// Return a list of well-known models grouped by provider.
+    ///
+    /// Each entry is `(provider_name, &[model_name])`.  The list is not
+    /// exhaustive — it covers the most popular models across providers.
+    pub fn known_models() -> Vec<(&'static str, Vec<&'static str>)> {
+        vec![
+            ("openai", vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini"]),
+            ("anthropic", vec!["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"]),
+            ("deepseek", vec!["deepseek-chat", "deepseek-reasoner"]),
+            ("groq", vec!["llama-3.1-70b-versatile", "mixtral-8x7b-32768"]),
+            ("gemini", vec!["gemini-2.5-pro", "gemini-2.0-flash"]),
+            ("ollama", vec!["llama3", "mistral", "codellama"]),
+        ]
+    }
+
     /// List available tools
     pub fn list_tools(&self) -> Vec<(&str, &str)> {
         self.tools.list()

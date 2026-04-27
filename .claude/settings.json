@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo doc *)",
+      "Bash(cargo check *)",
+      "Bash(cargo tree *)",
+      "Bash(cargo metadata *)",
+      "Bash(xargs wc *)",
+      "Bash(wc *)",
+      "Bash(rustup show *)",
+      "Bash(rustc --version *)",
+      "Bash(python3 -c *)"
+    ]
+  }
+}

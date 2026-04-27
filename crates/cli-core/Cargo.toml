@@ -24,6 +24,7 @@ uuid = { version = "1.0", features = ["v4"] }
 hermes-runtime = { path = "../runtime" }
 hermes-session-db = { path = "../session-db" }
 hermes-common = { workspace = true }
+clap_complete = "4"
 
 [dev-dependencies]
 tokio-test = "0.4"

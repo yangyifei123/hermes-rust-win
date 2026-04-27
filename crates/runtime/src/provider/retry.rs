@@ -101,41 +101,45 @@ where
         match f().await {
             Ok(val) => return Ok(val),
             Err(err) => {
-                let should_retry = if attempt < policy.max_retries {
-                    match &err {
-                        RuntimeError::RateLimitError { .. } => true,
-                        RuntimeError::ProviderError { .. } => {
-                            extract_status(&err)
-                                .map(RetryPolicy::is_retryable_status)
-                                .unwrap_or(false)
-                        }
-                        _ => false,
+                let is_retryable = match &err {
+                    RuntimeError::RateLimitError { .. } => true,
+                    RuntimeError::ProviderError { .. } => {
+                        extract_status(&err)
+                            .map(RetryPolicy::is_retryable_status)
+                            .unwrap_or(false)
                     }
-                } else {
-                    false
+                    _ => false,
                 };
 
-                if should_retry {
-                    // Respect Retry-After header on 429
-                    let delay = if let Some(secs) = extract_retry_after(&err) {
-                        Duration::from_secs(secs.min(policy.max_delay_ms / 1000))
-                    } else {
-                        policy.delay_for_attempt(attempt)
-                    };
-
-                    tracing::warn!(
-                        attempt = attempt + 1,
-                        max = policy.max_retries,
-                        delay_ms = delay.as_millis(),
-                        "Provider error, retrying: {}",
-                        err
-                    );
-
-                    tokio::time::sleep(delay).await;
-                    last_error = Some(err);
-                } else {
+                if !is_retryable || attempt >= policy.max_retries {
+                    // Non-retryable error: return immediately.
+                    // Final attempt with retryable error: wrap in RetryExhausted.
+                    if is_retryable {
+                        return Err(RuntimeError::RetryExhausted {
+                            attempts: policy.max_retries,
+                            last_error: err.to_string(),
+                        });
+                    }
                     return Err(err);
                 }
+
+                // Respect Retry-After header on 429
+                let delay = if let Some(secs) = extract_retry_after(&err) {
+                    Duration::from_secs(secs.min(policy.max_delay_ms / 1000))
+                } else {
+                    policy.delay_for_attempt(attempt)
+                };
+
+                tracing::warn!(
+                    attempt = attempt + 1,
+                    max = policy.max_retries,
+                    delay_ms = delay.as_millis(),
+                    "Provider error, retrying: {}",
+                    err
+                );
+
+                tokio::time::sleep(delay).await;
+                last_error = Some(err);
             }
         }
     }

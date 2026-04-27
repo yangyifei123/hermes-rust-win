@@ -37,6 +37,7 @@ fn get_url_to_provider() -> &'static HashMap<&'static str, Provider> {
             ("generativelanguage.googleapis.com", Provider::Gemini),
             ("api.arcee.ai", Provider::Arcee),
             ("localhost:11434", Provider::Ollama),
+            ("api.groq.com", Provider::Groq),
         ]);
         let boxed = Box::new(map);
         // SAFETY: single-threaded init, written once before any read

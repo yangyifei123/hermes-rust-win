@@ -39,6 +39,8 @@ pub enum Provider {
     DeepSeek,
     // Custom
     Custom,
+    // Groq - Ultra-fast inference
+    Groq,
 }
 
 impl Provider {
@@ -67,6 +69,7 @@ impl Provider {
             "copilot-acp" | "copilotacp" => Some(Provider::CopilotAcp),
             "huggingface" | "hf" => Some(Provider::HuggingFace),
             "deepseek" => Some(Provider::DeepSeek),
+            "groq" => Some(Provider::Groq),
             "custom" => Some(Provider::Custom),
             _ => None,
         }
@@ -95,6 +98,7 @@ impl Provider {
             Provider::CopilotAcp => "copilot-acp",
             Provider::HuggingFace => "huggingface",
             Provider::DeepSeek => "deepseek",
+            Provider::Groq => "groq",
             Provider::Custom => "custom",
         }
     }
@@ -122,6 +126,7 @@ impl Provider {
             Provider::CopilotAcp => "copilot-acp",
             Provider::HuggingFace => "Qwen/Qwen3.5-397B-A17B",
             Provider::DeepSeek => "deepseek-chat",
+            Provider::Groq => "llama-3.1-70b-versatile",
             Provider::Custom => "custom",
         }
     }
@@ -149,6 +154,7 @@ impl Provider {
             Provider::CopilotAcp => "", // ACP uses its own protocol
             Provider::HuggingFace => "https://api-inference.huggingface.co/models",
             Provider::DeepSeek => "https://api.deepseek.com/v1",
+            Provider::Groq => "https://api.groq.com/openai/v1",
             Provider::Custom => "",
         }
     }
@@ -175,6 +181,7 @@ impl Provider {
             Provider::CopilotAcp => "", // Uses ACP protocol
             Provider::HuggingFace => "HF_TOKEN",
             Provider::DeepSeek => "DEEPSEEK_API_KEY",
+            Provider::Groq => "GROQ_API_KEY",
             Provider::Custom => "",
         }
     }
@@ -214,6 +221,7 @@ impl Provider {
             Provider::CopilotAcp,
             Provider::HuggingFace,
             Provider::DeepSeek,
+            Provider::Groq,
             Provider::Custom,
         ]
     }
