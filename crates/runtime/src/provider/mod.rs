@@ -114,11 +114,32 @@ pub struct StreamChunk {
 #[derive(Debug, Clone, Deserialize)]
 pub struct StreamChoice {
     pub delta: DeltaMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FunctionCallDelta {
+    pub name: Option<String>,
+    pub arguments: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ToolCallDelta {
+    pub index: u32,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(rename = "type", default)]
+    pub tool_type: Option<String>,
+    #[serde(default)]
+    pub function: Option<FunctionCallDelta>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct DeltaMessage {
     pub content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
 // =============================================================================

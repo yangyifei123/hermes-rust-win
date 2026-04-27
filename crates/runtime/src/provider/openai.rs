@@ -1,4 +1,4 @@
-use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice};
+use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice, ToolCallDelta};
 use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
@@ -27,9 +27,10 @@ impl OpenAiProvider {
 /// Parse a single SSE `data:` line into a `StreamChunk`.
 /// Returns `None` for `[DONE]` sentinel or non-parseable lines.
 fn parse_openai_sse_line(line: &str) -> Option<Result<StreamChunk, RuntimeError>> {
-    let data = line.strip_prefix("data: ")?;
+    let data = line.strip_prefix("data:")?;
+    let data = data.trim();
 
-    if data.trim() == "[DONE]" {
+    if data == "[DONE]" {
         return None;
     }
 
@@ -41,7 +42,9 @@ fn parse_openai_sse_line(line: &str) -> Option<Result<StreamChunk, RuntimeError>
                 .map(|c| StreamChoice {
                     delta: DeltaMessage {
                         content: c.delta.content,
+                        tool_calls: c.delta.tool_calls,
                     },
+                    finish_reason: c.finish_reason,
                 })
                 .collect();
             Some(Ok(StreamChunk { choices }))
@@ -61,12 +64,16 @@ struct OpenAiStreamPayload {
 #[derive(serde::Deserialize)]
 struct OpenAiStreamChoice {
     delta: OpenAiStreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
 struct OpenAiStreamDelta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
 /// Process a raw SSE buffer into individual `data:` lines.

@@ -1,6 +1,6 @@
 //! Agent core loop - orchestrates LLM calls, tool dispatch, and session persistence
 
-use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider};
+use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider, ToolCall as ProviderToolCall};
 use crate::tool::ToolRegistry;
 use crate::RuntimeError;
 use futures::Stream;
@@ -8,6 +8,7 @@ use futures::StreamExt;
 use futures::TryStreamExt;
 use hermes_session_db::{SessionStore, Message, MessageRole};
 use serde_json::json;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -55,6 +56,17 @@ pub struct AgentResponse {
     pub turns_used: u32,
     pub session_id: Uuid,
     pub token_usage: Option<TokenUsage>,
+}
+
+/// Events emitted during a streaming agent turn.
+#[derive(Debug)]
+pub enum StreamEvent {
+    /// A text content delta from the LLM
+    Delta(String),
+    /// A tool call has begun (name known, arguments still streaming)
+    ToolCallStart { name: String },
+    /// All tool calls are complete and ready to execute
+    ToolCallsComplete(Vec<ProviderToolCall>),
 }
 
 /// The core agent that orchestrates LLM ↔ tool ↔ session interactions
@@ -234,7 +246,7 @@ impl Agent {
 
             // Call LLM with timeout — use streaming or non-streaming based on config
             let response = if self.config.streaming {
-                // Streaming mode: collect chunks into full response
+                // Streaming mode: collect chunks into full response, accumulating tool calls
                 let stream_result = tokio::time::timeout(
                     std::time::Duration::from_secs(self.config.timeout_secs),
                     self.provider.chat_completion_stream(request),
@@ -247,7 +259,10 @@ impl Agent {
 
                 // Collect all chunks into a single response
                 let mut full_content = String::new();
-                let finish_reason: Option<String> = None;
+                // Tool call accumulation: keyed by index
+                let mut tool_call_parts: HashMap<u32, (String, String, String)> = HashMap::new();
+                // (tool_call_id, function_name, arguments_accumulator)
+                let mut finish_reason: Option<String> = None;
 
                 let collect_result = tokio::time::timeout(
                     std::time::Duration::from_secs(self.config.timeout_secs),
@@ -256,9 +271,29 @@ impl Agent {
                             let chunk = chunk_result?;
                             if let Some(choice) = chunk.choices.first() {
                                 if let Some(ref content) = choice.delta.content {
-                                    // In a real REPL, we'd print each chunk here.
-                                    // For now, accumulate into full_content.
                                     full_content.push_str(content);
+                                }
+                                // Accumulate tool call deltas
+                                if let Some(ref tool_calls) = choice.delta.tool_calls {
+                                    for tc_delta in tool_calls {
+                                        let entry = tool_call_parts
+                                            .entry(tc_delta.index)
+                                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                        if let Some(ref id) = tc_delta.id {
+                                            entry.0 = id.clone();
+                                        }
+                                        if let Some(ref func) = tc_delta.function {
+                                            if let Some(ref name) = func.name {
+                                                entry.1 = name.clone();
+                                            }
+                                            if let Some(ref args) = func.arguments {
+                                                entry.2.push_str(args);
+                                            }
+                                        }
+                                    }
+                                }
+                                if choice.finish_reason.is_some() {
+                                    finish_reason = choice.finish_reason.clone();
                                 }
                             }
                         }
@@ -271,9 +306,33 @@ impl Agent {
                         duration_secs: self.config.timeout_secs,
                     })??;
 
+                // Reconstruct tool calls from accumulated parts
+                let mut tool_calls: Vec<ProviderToolCall> = Vec::new();
+                if !tool_call_parts.is_empty() {
+                    let mut indices: Vec<u32> = tool_call_parts.keys().copied().collect();
+                    indices.sort();
+                    for idx in indices {
+                        let (id, name, arguments) = &tool_call_parts[&idx];
+                        tool_calls.push(ProviderToolCall {
+                            id: id.clone(),
+                            tool_type: "function".to_string(),
+                            function: crate::provider::FunctionCall {
+                                name: name.clone(),
+                                arguments: arguments.clone(),
+                            },
+                        });
+                    }
+                }
+
+                let message = if !tool_calls.is_empty() {
+                    ChatMessage::assistant_with_tool_calls(tool_calls)
+                } else {
+                    ChatMessage::assistant(&full_content)
+                };
+
                 ChatResponse {
                     choices: vec![crate::provider::ChatChoice {
-                        message: ChatMessage::assistant(&full_content),
+                        message,
                         finish_reason,
                     }],
                     usage: None,
@@ -509,18 +568,19 @@ impl Agent {
         self.append_message(session_id, MessageRole::Assistant, content)
     }
 
-    /// Stream one turn of the agent loop, yielding content deltas as they arrive.
+    /// Stream one turn of the agent loop, yielding events as they arrive.
     ///
     /// The caller (ChatRepl) iterates the returned stream to print tokens in
-    /// real-time. After the stream completes, the caller should call
-    /// `append_assistant_message` to persist the full response.
+    /// real-time and handle tool calls. After the stream completes, the caller
+    /// should call `append_assistant_message` to persist the full response.
     ///
-    /// Returns a stream of `Result<String, RuntimeError>` where each `String`
-    /// is a content delta from the LLM.
+    /// Returns a stream of `Result<StreamEvent, RuntimeError>` where each event
+    /// is either a text delta, a tool call start notification, or the complete
+    /// set of tool calls ready for execution.
     pub fn stream_turn(
         &self,
         session_id: Uuid,
-    ) -> Pin<Box<dyn Stream<Item = Result<String, RuntimeError>> + Send>> {
+    ) -> Pin<Box<dyn Stream<Item = Result<StreamEvent, RuntimeError>> + Send>> {
         // Build request from current session history
         let messages = match self.build_messages(&session_id) {
             Ok(m) => m,
@@ -563,29 +623,79 @@ impl Agent {
             }
         })
         .try_flatten()
-        .map(|chunk_result| {
-            // Extract the content delta from each StreamChunk
-            match chunk_result {
-                Ok(chunk) => {
-                    if let Some(choice) = chunk.choices.first() {
-                        if let Some(ref content) = choice.delta.content {
-                            return Ok(content.clone());
+        .scan(
+            HashMap::<u32, (String, String, String)>::new(),
+            |tool_call_parts, chunk_result| {
+                let mut events = Vec::new();
+
+                match chunk_result {
+                    Ok(chunk) => {
+                        if let Some(choice) = chunk.choices.first() {
+                            // Emit text content delta
+                            if let Some(ref content) = choice.delta.content {
+                                if !content.is_empty() {
+                                    events.push(Ok(StreamEvent::Delta(content.clone())));
+                                }
+                            }
+
+                            // Handle tool call deltas
+                            if let Some(ref tool_calls) = choice.delta.tool_calls {
+                                for tc_delta in tool_calls {
+                                    let entry = tool_call_parts
+                                        .entry(tc_delta.index)
+                                        .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                    if let Some(ref id) = tc_delta.id {
+                                        entry.0 = id.clone();
+                                    }
+                                    if let Some(ref func) = tc_delta.function {
+                                        if let Some(ref name) = func.name {
+                                            // Tool call start — emit event
+                                            events.push(Ok(StreamEvent::ToolCallStart {
+                                                name: name.clone(),
+                                            }));
+                                            entry.1 = name.clone();
+                                        }
+                                        if let Some(ref args) = func.arguments {
+                                            entry.2.push_str(args);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // If stream finished with tool_calls reason, emit complete event
+                            if choice.finish_reason.as_deref() == Some("tool_calls")
+                                && !tool_call_parts.is_empty() {
+                                    let mut indices: Vec<u32> = tool_call_parts.keys().copied().collect();
+                                    indices.sort();
+                                    let completed: Vec<ProviderToolCall> = indices
+                                        .iter()
+                                        .map(|&idx| {
+                                            let (id, name, arguments) = &tool_call_parts[&idx];
+                                            ProviderToolCall {
+                                                id: id.clone(),
+                                                tool_type: "function".to_string(),
+                                                function: crate::provider::FunctionCall {
+                                                    name: name.clone(),
+                                                    arguments: arguments.clone(),
+                                                },
+                                            }
+                                        })
+                                        .collect();
+                                    events.push(Ok(StreamEvent::ToolCallsComplete(completed)));
+                                    tool_call_parts.clear();
+                                }
                         }
                     }
-                    // Empty delta (e.g. role-only chunk) — skip by yielding empty
-                    Ok(String::new())
+                    Err(e) => {
+                        events.push(Err(e));
+                    }
                 }
-                Err(e) => Err(e),
-            }
-        })
-        .filter(|result| {
-            // Filter out empty deltas so the caller only gets real content
-            let keep = match result {
-                Ok(s) => !s.is_empty(),
-                Err(_) => true,
-            };
-            std::future::ready(keep)
-        });
+
+                std::future::ready(Some(events))
+            },
+        )
+        .map(futures::stream::iter)
+        .flatten();
 
         Box::pin(stream)
     }

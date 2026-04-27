@@ -1,6 +1,6 @@
 //! Chat REPL - interactive and single-shot modes
 
-use crate::agent::{Agent, AgentResponse};
+use crate::agent::{Agent, AgentResponse, StreamEvent};
 use crate::RuntimeError;
 use futures::StreamExt;
 use hermes_session_db::MessageRole;
@@ -50,8 +50,7 @@ impl ChatRepl {
 
     /// Run one turn with real-time streaming token display.
     ///
-    /// Prints each content delta to stdout as it arrives from the LLM,
-    /// then persists the full response to the session.
+    /// Handles both text deltas and streaming tool calls.
     async fn run_turn_streaming(&mut self, input: &str) -> Result<AgentResponse, RuntimeError> {
         // Append user message first
         self.agent
@@ -61,20 +60,30 @@ impl ChatRepl {
         print!("Assistant: ");
         let _ = std::io::stdout().flush();
 
-        // Stream content deltas from agent
+        // Stream events from agent
         let mut stream = self.agent.stream_turn(self.session_id);
         let mut full_content = String::new();
+        let mut tool_calls_made = Vec::new();
 
-        while let Some(delta_result) = stream.next().await {
-            match delta_result {
-                Ok(delta) => {
-                    // Print each token immediately
-                    print!("{}", delta);
+        while let Some(event_result) = stream.next().await {
+            match event_result {
+                Ok(StreamEvent::Delta(text)) => {
+                    print!("{}", text);
                     let _ = std::io::stdout().flush();
-                    full_content.push_str(&delta);
+                    full_content.push_str(&text);
+                }
+                Ok(StreamEvent::ToolCallStart { name }) => {
+                    eprintln!("\n  Running `{}`...", name);
+                    tool_calls_made.push(name);
+                }
+                Ok(StreamEvent::ToolCallsComplete(_tool_calls)) => {
+                    // Tool calls are executed inside the agent loop (via run_turn),
+                    // but streaming path currently yields them for caller handling.
+                    // For now, log and continue — full tool execution in streaming
+                    // requires the caller to dispatch tools and re-enter the stream.
+                    eprintln!("  Tool calls complete, awaiting follow-up...");
                 }
                 Err(e) => {
-                    // Print newline for clean error display
                     println!();
                     return Err(e);
                 }
@@ -85,12 +94,14 @@ impl ChatRepl {
         println!();
 
         // Persist the full assistant response to session
-        self.agent
-            .append_assistant_message(&self.session_id, &full_content)?;
+        if !full_content.is_empty() {
+            self.agent
+                .append_assistant_message(&self.session_id, &full_content)?;
+        }
 
         Ok(AgentResponse {
             content: full_content,
-            tool_calls_made: vec![], // Streaming path doesn't handle tool calls
+            tool_calls_made,
             turns_used: self.agent.turns_used(),
             session_id: self.session_id,
             token_usage: None,

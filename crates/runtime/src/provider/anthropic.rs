@@ -1,4 +1,4 @@
-use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice};
+use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, FunctionCallDelta, LlmProvider, StreamChunk, StreamChoice, ToolCallDelta};
 use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
@@ -62,35 +62,131 @@ struct AnthropicSseEvent {
     data: String,
 }
 
-/// Intermediate deserialization for Anthropic content_block_delta.
-#[derive(serde::Deserialize)]
-struct AnthropicContentBlockDelta {
-    delta: AnthropicTextDelta,
-}
-
-#[derive(serde::Deserialize)]
-struct AnthropicTextDelta {
-    #[serde(rename = "type", default)]
-    _type: String,
-    text: String,
-}
-
 /// Parse an Anthropic SSE event into a StreamChunk (if it carries content).
 /// Returns `None` for non-content events (ping, message_start, etc.).
 fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamChunk, RuntimeError>> {
     match event.event_type {
         AnthropicEventType::ContentBlockDelta => {
-            match serde_json::from_str::<AnthropicContentBlockDelta>(&event.data) {
-                Ok(payload) => Some(Ok(StreamChunk {
+            // Could be text_delta or input_json_delta (for tool args)
+            // Parse the raw JSON to determine which
+            let raw: serde_json::Value = match serde_json::from_str(&event.data) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(Err(RuntimeError::ProviderError {
+                        message: format!("Failed to parse Anthropic content_block_delta: {e}"),
+                    }));
+                }
+            };
+
+            let delta_obj = &raw["delta"];
+            let delta_type = delta_obj["type"].as_str().unwrap_or("");
+
+            if delta_type == "input_json_delta" {
+                // Tool call argument chunk
+                let index = raw["index"].as_u64().unwrap_or(0) as u32;
+                let partial = delta_obj["partial_json"].as_str().unwrap_or("");
+                Some(Ok(StreamChunk {
                     choices: vec![StreamChoice {
                         delta: DeltaMessage {
-                            content: Some(payload.delta.text),
+                            content: None,
+                            tool_calls: Some(vec![ToolCallDelta {
+                                index,
+                                id: None,
+                                tool_type: None,
+                                function: Some(FunctionCallDelta {
+                                    name: None,
+                                    arguments: Some(partial.to_string()),
+                                }),
+                            }]),
                         },
+                        finish_reason: None,
                     }],
-                })),
-                Err(e) => Some(Err(RuntimeError::ProviderError {
-                    message: format!("Failed to parse Anthropic content_block_delta: {e}"),
-                })),
+                }))
+            } else if delta_type == "text_delta" {
+                let text = delta_obj["text"].as_str().unwrap_or("");
+                Some(Ok(StreamChunk {
+                    choices: vec![StreamChoice {
+                        delta: DeltaMessage {
+                            content: Some(text.to_string()),
+                            tool_calls: None,
+                        },
+                        finish_reason: None,
+                    }],
+                }))
+            } else {
+                // Unknown delta type — skip
+                None
+            }
+        }
+        AnthropicEventType::ContentBlockStart => {
+            // Check if this is a tool_use block
+            let raw: serde_json::Value = match serde_json::from_str(&event.data) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(Err(RuntimeError::ProviderError {
+                        message: format!("Failed to parse Anthropic content_block_start: {e}"),
+                    }));
+                }
+            };
+
+            let block = &raw["content_block"];
+            let block_type = block["type"].as_str().unwrap_or("");
+
+            if block_type == "tool_use" {
+                let index = raw["index"].as_u64().unwrap_or(0) as u32;
+                let id = block["id"].as_str().unwrap_or("").to_string();
+                let name = block["name"].as_str().unwrap_or("").to_string();
+                Some(Ok(StreamChunk {
+                    choices: vec![StreamChoice {
+                        delta: DeltaMessage {
+                            content: None,
+                            tool_calls: Some(vec![ToolCallDelta {
+                                index,
+                                id: Some(id),
+                                tool_type: Some("function".to_string()),
+                                function: Some(FunctionCallDelta {
+                                    name: Some(name),
+                                    arguments: None,
+                                }),
+                            }]),
+                        },
+                        finish_reason: None,
+                    }],
+                }))
+            } else {
+                // Text block start or other — skip
+                None
+            }
+        }
+        AnthropicEventType::MessageDelta => {
+            // Check for tool_use stop reason
+            let raw: serde_json::Value = match serde_json::from_str(&event.data) {
+                Ok(v) => v,
+                Err(_) => return None,
+            };
+            let stop_reason = raw["delta"]["stop_reason"].as_str().unwrap_or("");
+            if stop_reason == "tool_use" {
+                Some(Ok(StreamChunk {
+                    choices: vec![StreamChoice {
+                        delta: DeltaMessage {
+                            content: None,
+                            tool_calls: None,
+                        },
+                        finish_reason: Some("tool_calls".to_string()),
+                    }],
+                }))
+            } else if !stop_reason.is_empty() {
+                Some(Ok(StreamChunk {
+                    choices: vec![StreamChoice {
+                        delta: DeltaMessage {
+                            content: None,
+                            tool_calls: None,
+                        },
+                        finish_reason: Some(stop_reason.to_string()),
+                    }],
+                }))
+            } else {
+                None
             }
         }
         AnthropicEventType::Error => {
@@ -98,8 +194,7 @@ fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamC
                 message: format!("Anthropic stream error: {}", event.data),
             }))
         }
-        // message_start, content_block_start, content_block_stop, message_delta,
-        // message_stop, ping, unknown — skip these
+        // message_start, content_block_stop, message_stop, ping, unknown — skip these
         _ => None,
     }
 }

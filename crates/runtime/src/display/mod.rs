@@ -5,6 +5,219 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+// ANSI escape codes for terminal formatting
+mod ansi {
+    pub const RESET: &str = "\x1b[0m";
+    pub const BOLD: &str = "\x1b[1m";
+    pub const DIM: &str = "\x1b[2m";
+    pub const CYAN: &str = "\x1b[36m";
+    pub const BLUE: &str = "\x1b[34m";
+    pub const UNDERLINE: &str = "\x1b[4m";
+    pub const BRIGHT_WHITE: &str = "\x1b[97m";
+}
+
+/// Streaming-friendly markdown renderer for terminal output.
+///
+/// Applies ANSI formatting to markdown text as it streams in:
+/// - `# Headers` → bold + bright white
+/// - `**bold**` → bold
+/// - `` `code` `` → cyan
+/// - ```code blocks``` → dim
+/// - `[links](url)` → blue + underline
+/// - `- lists` → bullet points with indent
+pub struct MarkdownRenderer {
+    in_code_block: bool,
+    code_fence: String,
+    supports_color: bool,
+}
+
+impl Default for MarkdownRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MarkdownRenderer {
+    pub fn new() -> Self {
+        Self {
+            in_code_block: false,
+            code_fence: String::new(),
+            supports_color: true,
+        }
+    }
+
+    pub fn with_color(mut self, supports: bool) -> Self {
+        self.supports_color = supports;
+        self
+    }
+
+    /// Render a chunk of markdown text for terminal display.
+    ///
+    /// Designed for streaming: maintains state across calls (e.g., inside code blocks).
+    /// Returns the formatted string ready to print.
+    pub fn render(&mut self, text: &str) -> String {
+        let mut output = String::with_capacity(text.len() + 64);
+        let mut remaining = text;
+
+        while !remaining.is_empty() {
+            if self.in_code_block {
+                // Look for closing fence
+                if let Some(pos) = remaining.find(&self.code_fence) {
+                    output.push_str(&remaining[..pos]);
+                    if self.supports_color {
+                        output.push_str(ansi::RESET);
+                    }
+                    output.push_str(&self.code_fence);
+                    remaining = &remaining[pos + self.code_fence.len()..];
+                    self.in_code_block = false;
+                    self.code_fence.clear();
+                } else {
+                    output.push_str(remaining);
+                    break;
+                }
+            } else if let Some(pos) = remaining.find("```") {
+                // Opening code fence
+                let after = &remaining[pos + 3..];
+                let newline = after.find('\n').unwrap_or(after.len());
+                self.code_fence = remaining[pos..pos + 3 + newline].to_string();
+
+                // Render pre-fence text with inline formatting
+                output.push_str(&self.format_inline(&remaining[..pos]));
+
+                if self.supports_color {
+                    output.push_str(ansi::DIM);
+                }
+                output.push_str(&self.code_fence);
+                remaining = &remaining[pos + 3 + newline..];
+                self.in_code_block = true;
+            } else {
+                output.push_str(&self.format_inline(remaining));
+                break;
+            }
+        }
+
+        output
+    }
+
+    /// Format inline markdown elements (bold, code, headers, links).
+    fn format_inline(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len() + 32);
+        let mut chars = text.char_indices().peekable();
+        let bytes = text.as_bytes();
+
+        while let Some((i, ch)) = chars.next() {
+            match ch {
+                '#' if i == 0 || text[..i].ends_with('\n') => {
+                    // Count hash level
+                    let mut level = 1;
+                    while chars.peek().map(|(_, c)| *c) == Some('#') {
+                        chars.next();
+                        level += 1;
+                    }
+                    // Skip space after hashes
+                    if chars.peek().map(|(_, c)| *c) == Some(' ') {
+                        chars.next();
+                    }
+                    if self.supports_color {
+                        out.push_str(ansi::BOLD);
+                        out.push_str(ansi::BRIGHT_WHITE);
+                    }
+                    // Collect rest of line
+                    let start = chars.peek().map(|(i, _)| *i).unwrap_or(i + level);
+                    let end = text[start..].find('\n').map(|p| start + p).unwrap_or(text.len());
+                    out.push_str(&text[start..end]);
+                    if self.supports_color {
+                        out.push_str(ansi::RESET);
+                    }
+                    out.push('\n');
+                    // Skip past what we consumed
+                    for _ in start..end {
+                        chars.next();
+                    }
+                }
+                '*' if bytes.get(i + 1) == Some(&b'*') => {
+                    // Bold **text**
+                    chars.next(); // skip second *
+                    if let Some(end) = text[i + 2..].find("**") {
+                        if self.supports_color {
+                            out.push_str(ansi::BOLD);
+                        }
+                        out.push_str(&text[i + 2..i + 2 + end]);
+                        if self.supports_color {
+                            out.push_str(ansi::RESET);
+                        }
+                        // Skip past closing **
+                        for _ in 0..end + 2 {
+                            chars.next();
+                        }
+                    } else {
+                        out.push_str("**");
+                    }
+                }
+                '`' => {
+                    // Inline code `text`
+                    if let Some(end) = text[i + 1..].find('`') {
+                        if self.supports_color {
+                            out.push_str(ansi::CYAN);
+                        }
+                        out.push_str(&text[i + 1..i + 1 + end]);
+                        if self.supports_color {
+                            out.push_str(ansi::RESET);
+                        }
+                        for _ in 0..end + 1 {
+                            chars.next();
+                        }
+                    } else {
+                        out.push('`');
+                    }
+                }
+                '[' => {
+                    // Try to match [text](url)
+                    if let Some(bracket_end) = text[i + 1..].find(']') {
+                        let after_bracket = i + 1 + bracket_end + 1;
+                        if bytes.get(after_bracket) == Some(&b'(') {
+                            if let Some(paren_end) = text[after_bracket + 1..].find(')') {
+                                let link_text = &text[i + 1..i + 1 + bracket_end];
+                                if self.supports_color {
+                                    out.push_str(ansi::BLUE);
+                                    out.push_str(ansi::UNDERLINE);
+                                }
+                                out.push_str(link_text);
+                                if self.supports_color {
+                                    out.push_str(ansi::RESET);
+                                }
+                                // Skip entire [text](url)
+                                let total_len = 1 + bracket_end + 1 + 1 + paren_end + 1;
+                                for _ in 1..total_len {
+                                    chars.next();
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    out.push('[');
+                }
+                '-' if (i == 0 || text[..i].ends_with('\n'))
+                    && bytes.get(i + 1) == Some(&b' ') =>
+                {
+                    out.push_str("  • ");
+                    chars.next(); // skip space
+                }
+                _ => {
+                    out.push(ch);
+                }
+            }
+        }
+
+        out
+    }
+
+    /// Check if we're currently inside a code block (for streaming state).
+    pub fn is_in_code_block(&self) -> bool {
+        self.in_code_block
+    }
+}
+
 /// Commands sent from the public API to the spinner thread.
 enum SpinnerCmd {
     /// Start (or restart) spinning with the given label.
