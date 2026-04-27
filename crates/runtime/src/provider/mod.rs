@@ -419,6 +419,26 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
                 Some(&cfg.default_model),
             ))
         }
+        hermes_common::Provider::DeepSeek => {
+            Box::new(crate::provider::providers::create_deepseek_provider(
+                api_key.to_string(), Some(&url), Some(&cfg.default_model),
+            ))
+        }
+        hermes_common::Provider::Ollama => {
+            Box::new(crate::provider::providers::create_ollama_provider(
+                Some(&url), Some(&cfg.default_model),
+            ))
+        }
+        hermes_common::Provider::Azure => {
+            Box::new(crate::provider::providers::create_azure_provider(
+                api_key.to_string(), Some(&url), Some(&cfg.default_model),
+            ))
+        }
+        hermes_common::Provider::OpenRouter => {
+            Box::new(crate::provider::providers::create_openrouter_provider(
+                api_key.to_string(), Some(&url), Some(&cfg.default_model),
+            ))
+        }
         _ => {
             Box::new(crate::provider::openai::OpenAiProvider::new(
                 api_key.to_string(),
@@ -435,6 +455,7 @@ pub mod anthropic;
 pub mod caching;
 pub mod gemini;
 pub mod groq;
+pub mod providers;
 pub mod retry;
 
 pub use openai::OpenAiProvider;
@@ -463,9 +484,8 @@ mod tests {
 
     #[test]
     fn test_create_provider_deepseek() {
-        // DeepSeek uses OpenAI-compatible API
         let provider = create_provider(&Provider::DeepSeek, "test-key", None);
-        assert_eq!(provider.name(), "openai"); // Uses OpenAI provider struct
+        assert_eq!(provider.name(), "deepseek");
         assert_eq!(provider.default_model(), "deepseek-chat");
     }
 
@@ -501,7 +521,7 @@ mod tests {
     #[test]
     fn test_create_provider_openrouter() {
         let provider = create_provider(&Provider::OpenRouter, "test-key", None);
-        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.name(), "openrouter");
         assert_eq!(provider.default_model(), "openai/gpt-4o");
     }
 
