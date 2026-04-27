@@ -6,7 +6,9 @@
       "Bash(cargo test *)",
       "Bash(cargo clippy *)",
       "Bash(awk '{print $NF}')",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m 'feat: Wave 1 infrastructure — tokenizer, model metadata, Groq provider, CLI modules *)"
     ]
   }
 }

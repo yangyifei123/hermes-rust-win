@@ -449,6 +449,52 @@ impl Agent {
         self.tools.list()
     }
 
+    /// Compact session by truncating middle messages, keeping system + recent context.
+    ///
+    /// Returns (before_count, after_count, tokens_saved_estimate).
+    pub fn compact_session(&self, session_id: &Uuid, keep_recent: usize) -> Result<(usize, usize, usize), RuntimeError> {
+        let messages = self.get_history(session_id)?;
+        let before = messages.len();
+
+        // Count system messages at the front
+        let system_count = messages.iter().take_while(|m| m.role == MessageRole::System).count();
+
+        // Count tokens before
+        let registry = self.tokenizer_registry();
+        let chat_msgs: Vec<ChatMessage> = messages.iter().map(|m| match m.role {
+            MessageRole::System => ChatMessage::system(&m.content),
+            MessageRole::User => ChatMessage::user(&m.content),
+            MessageRole::Assistant => ChatMessage::assistant(&m.content),
+            MessageRole::Tool => ChatMessage::tool_result(
+                m.tool_name.as_deref().unwrap_or("unknown"),
+                &m.content,
+            ),
+        }).collect();
+        let tokens_before = registry.count_messages(&self.model, &chat_msgs);
+
+        // Truncate: keep system messages + last N
+        let deleted = self.session_store
+            .truncate_messages(session_id, system_count, keep_recent)
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+
+        let after = before - deleted;
+
+        // Estimate tokens after
+        let after_msgs = self.get_history(session_id)?;
+        let after_chat: Vec<ChatMessage> = after_msgs.iter().map(|m| match m.role {
+            MessageRole::System => ChatMessage::system(&m.content),
+            MessageRole::User => ChatMessage::user(&m.content),
+            MessageRole::Assistant => ChatMessage::assistant(&m.content),
+            MessageRole::Tool => ChatMessage::tool_result(
+                m.tool_name.as_deref().unwrap_or("unknown"),
+                &m.content,
+            ),
+        }).collect();
+        let tokens_after = registry.count_messages(&self.model, &after_chat);
+
+        Ok((before, after, tokens_before.saturating_sub(tokens_after)))
+    }
+
     /// Check whether streaming mode is enabled
     pub fn streaming_enabled(&self) -> bool {
         self.config.streaming

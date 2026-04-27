@@ -261,6 +261,43 @@ impl SessionStore {
         Ok(messages)
     }
 
+    /// Delete messages from a session, keeping the first `keep_first` and last
+    /// `keep_last` messages. Returns the number of messages deleted.
+    pub fn truncate_messages(
+        &self,
+        session_id: &Uuid,
+        keep_first: usize,
+        keep_last: usize,
+    ) -> Result<usize> {
+        let messages = self.get_messages(session_id)?;
+        let total = messages.len();
+        let skip = total.saturating_sub(keep_first + keep_last);
+        if skip == 0 {
+            return Ok(0);
+        }
+        let to_delete: Vec<String> = messages[keep_first..keep_first + skip]
+            .iter()
+            .map(|m| m.id.to_string())
+            .collect();
+        let sid = session_id.to_string();
+        execute_write_with_retry(&self.conn, |conn| {
+            for id in &to_delete {
+                conn.execute(
+                    "DELETE FROM messages WHERE id = ?1",
+                    [id],
+                )
+                .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+            }
+            conn.execute(
+                "UPDATE sessions SET updated_at = ?1 WHERE id = ?2",
+                (Utc::now().to_rfc3339(), &sid),
+            )
+            .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+            Ok(())
+        })?;
+        Ok(skip)
+    }
+
     pub fn delete_session(&self, id: &Uuid) -> Result<()> {
         let id_str = id.to_string();
         execute_write_with_retry(&self.conn, |conn| {

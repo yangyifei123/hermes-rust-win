@@ -1163,10 +1163,10 @@ async fn handle_chat(
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    println!();
+                    println!("\nInterrupted. Saving session...");
                     let session_id = repl.graceful_shutdown();
-                    println!("Interrupted. Session {} saved. Goodbye!", session_id);
-                    break;
+                    println!("Session {} saved. Goodbye!", session_id);
+                    std::process::exit(0);
                 }
             };
 
@@ -1179,8 +1179,10 @@ async fn handle_chat(
             let turn_result = tokio::select! {
                 result = repl.run_turn(input) => result,
                 _ = tokio::signal::ctrl_c() => {
-                    println!("\nInterrupted current request.");
-                    continue;
+                    println!("\nInterrupted. Saving session...");
+                    let session_id = repl.graceful_shutdown();
+                    println!("Session {} saved. Goodbye!", session_id);
+                    std::process::exit(0);
                 }
             };
 
@@ -1189,8 +1191,8 @@ async fn handle_chat(
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("REPL exited") {
-                        let _ = repl.graceful_shutdown();
-                        println!("Goodbye!");
+                        let session_id = repl.graceful_shutdown();
+                        println!("Session {} saved. Goodbye!", session_id);
                         break;
                     }
                     eprintln!("Error: {}", msg);

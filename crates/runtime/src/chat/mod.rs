@@ -204,12 +204,10 @@ impl ChatRepl {
                 })
             }
             "compact" => {
-                // Truncate old messages keeping last 10
-                let messages = self.agent.get_history(&self.session_id)?;
-                let count = messages.len();
-                if count > 10 {
+                let (before, after, tokens_saved) = self.agent.compact_session(&self.session_id, 10)?;
+                if before == after {
                     Ok(AgentResponse {
-                        content: format!("Context has {} messages. Compact not yet implemented — would keep last 10.", count),
+                        content: format!("Context has {} messages. No compaction needed.", before),
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
@@ -217,7 +215,10 @@ impl ChatRepl {
                     })
                 } else {
                     Ok(AgentResponse {
-                        content: format!("Context has {} messages. No compaction needed.", count),
+                        content: format!(
+                            "Compacted: {} → {} messages (~{} tokens saved). Kept system prompt + 10 recent messages.",
+                            before, after, tokens_saved
+                        ),
                         tool_calls_made: vec![],
                         turns_used: self.agent.turns_used(),
                         session_id: self.session_id,
