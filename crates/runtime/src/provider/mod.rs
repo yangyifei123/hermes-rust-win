@@ -412,6 +412,13 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
                 Some(&cfg.default_model),
             ))
         }
+        hermes_common::Provider::Gemini => {
+            Box::new(crate::provider::gemini::GeminiProvider::new(
+                api_key.to_string(),
+                Some(&url),
+                Some(&cfg.default_model),
+            ))
+        }
         _ => {
             Box::new(crate::provider::openai::OpenAiProvider::new(
                 api_key.to_string(),
@@ -423,13 +430,17 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
 }
 
 pub mod openai;
+pub mod openai_compatible;
 pub mod anthropic;
 pub mod caching;
+pub mod gemini;
 pub mod groq;
 pub mod retry;
 
 pub use openai::OpenAiProvider;
+pub use openai_compatible::OpenAiCompatibleProvider;
 pub use anthropic::AnthropicProvider;
+pub use gemini::GeminiProvider;
 
 #[cfg(test)]
 mod tests {
@@ -499,6 +510,13 @@ mod tests {
         let provider = create_provider(&Provider::Groq, "test-key", None);
         assert_eq!(provider.name(), "openai");
         assert_eq!(provider.default_model(), "llama-3.1-70b-versatile");
+    }
+
+    #[test]
+    fn test_create_provider_gemini() {
+        let provider = create_provider(&Provider::Gemini, "test-key", None);
+        assert_eq!(provider.name(), "gemini");
+        assert_eq!(provider.default_model(), "gemini-2.5-pro");
     }
 
     // =========================================================================

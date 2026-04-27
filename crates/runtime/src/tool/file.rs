@@ -203,8 +203,7 @@ mod tests {
     use std::env;
 
     fn make_temp_file(name: &str, content: &str) -> String {
-        let cwd = env::current_dir().unwrap();
-        let dir = cwd.join("test_temp_files");
+        let dir = std::path::PathBuf::from(format!("test_temp_{:?}", std::thread::current().id()));
         std::fs::create_dir_all(&dir).ok();
         let path = dir.join(name);
         std::fs::write(&path, content).unwrap();
@@ -212,8 +211,7 @@ mod tests {
     }
 
     fn cleanup_temp() {
-        let cwd = env::current_dir().unwrap();
-        let dir = cwd.join("test_temp_files");
+        let dir = std::path::PathBuf::from(format!("test_temp_{:?}", std::thread::current().id()));
         std::fs::remove_dir_all(&dir).ok();
     }
 
