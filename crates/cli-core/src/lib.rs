@@ -8,6 +8,7 @@ use tracing::info;
 pub mod auth;
 pub mod commands;
 pub mod config;
+pub mod credential_pool;
 pub mod cron;
 pub mod error;
 pub mod gateway;

@@ -11,7 +11,9 @@
       "Bash(git commit -m 'feat: Wave 1 infrastructure — tokenizer, model metadata, Groq provider, CLI modules *)",
       "Bash(git commit -m 'feat: display engine, system prompt builder, /compact, Ctrl+C handling *)",
       "Bash(git commit -m 'feat: streaming tool calls, Anthropic tool_use support, markdown renderer *)",
-      "Bash(git commit -m 'docs: update README with current features, add CHANGELOG *)"
+      "Bash(git commit -m 'docs: update README with current features, add CHANGELOG *)",
+      "Bash(git commit -m 'feat\\(runtime\\): provider registry with configs for all 22 providers *)",
+      "Bash(git commit -m 'feat\\(cli-core\\): credential pool with failover and round-robin *)"
     ]
   }
 }

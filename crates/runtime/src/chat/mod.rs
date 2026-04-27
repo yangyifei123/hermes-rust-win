@@ -1,6 +1,7 @@
 //! Chat REPL - interactive and single-shot modes
 
 use crate::agent::{Agent, AgentResponse, StreamEvent};
+use crate::display::MarkdownRenderer;
 use crate::RuntimeError;
 use futures::StreamExt;
 use hermes_session_db::MessageRole;
@@ -64,11 +65,12 @@ impl ChatRepl {
         let mut stream = self.agent.stream_turn(self.session_id);
         let mut full_content = String::new();
         let mut tool_calls_made = Vec::new();
+        let mut md = MarkdownRenderer::new();
 
         while let Some(event_result) = stream.next().await {
             match event_result {
                 Ok(StreamEvent::Delta(text)) => {
-                    print!("{}", text);
+                    print!("{}", md.render(&text));
                     let _ = std::io::stdout().flush();
                     full_content.push_str(&text);
                 }
