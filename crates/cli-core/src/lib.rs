@@ -1245,7 +1245,7 @@ async fn handle_chat(
                             hermes_runtime::display::print_session_summary(
                                 repl.agent().turns_used(),
                                 0,
-                                0.0,
+                                repl.agent().total_cost(),
                                 0,
                             );
                             let session_id = repl.graceful_shutdown();
