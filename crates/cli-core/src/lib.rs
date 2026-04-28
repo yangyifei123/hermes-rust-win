@@ -17,6 +17,7 @@ pub mod pairings;
 pub mod plugins;
 pub mod profiles;
 pub mod skills;
+pub mod skills_store;
 pub mod tools;
 pub mod webhooks;
 

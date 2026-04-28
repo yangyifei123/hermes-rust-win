@@ -1,11 +1,12 @@
 use crate::provider::{
-    ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice, ToolCallDelta,
+    ChatRequest, ChatResponse, DeltaMessage, LlmProvider, ProviderConfig, StreamChunk, StreamChoice, ToolCallDelta,
 };
 use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
 use futures::Stream;
 use reqwest::Client;
+use std::collections::HashMap;
 use std::pin::Pin;
 
 pub struct OpenAiCompatibleProvider {
@@ -16,9 +17,42 @@ pub struct OpenAiCompatibleProvider {
     provider_name: String,
     auth_header: String,
     auth_prefix: String,
+    extra_headers: HashMap<String, String>,
 }
 
 impl OpenAiCompatibleProvider {
+    /// Create a new provider from a [`ProviderConfig`] and credentials.
+    ///
+    /// This is the preferred constructor for registry-driven provider creation.
+    /// The `base_url_override` and `model_override` parameters allow the caller
+    /// (e.g. CLI flag or config file) to override the registry defaults.
+    pub fn from_config(
+        config: &ProviderConfig,
+        api_key: String,
+        base_url_override: Option<&str>,
+        model_override: Option<&str>,
+        provider_name: &str,
+    ) -> Self {
+        let base_url = base_url_override
+            .unwrap_or(&config.base_url)
+            .to_string();
+        let model = model_override
+            .unwrap_or(&config.default_model)
+            .to_string();
+
+        Self {
+            client: Client::new(),
+            api_key,
+            base_url,
+            model,
+            provider_name: provider_name.to_string(),
+            auth_header: config.auth_header.clone(),
+            auth_prefix: config.auth_prefix.clone(),
+            extra_headers: HashMap::new(),
+        }
+    }
+
+    /// Low-level constructor with explicit parameters.
     pub fn new(
         api_key: String,
         base_url: Option<&str>,
@@ -35,6 +69,7 @@ impl OpenAiCompatibleProvider {
             provider_name: provider_name.to_string(),
             auth_header: auth_header.unwrap_or("Authorization").to_string(),
             auth_prefix: auth_prefix.unwrap_or("Bearer ").to_string(),
+            extra_headers: HashMap::new(),
         }
     }
 
@@ -46,6 +81,25 @@ impl OpenAiCompatibleProvider {
     /// Returns a reference to the internal `model` string.
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Build the authenticated request builder with the appropriate headers.
+    fn build_request(&self, url: &str, body: &ChatRequest) -> reqwest::RequestBuilder {
+        let mut req = self
+            .client
+            .post(url)
+            .header(
+                &self.auth_header,
+                format!("{}{}", self.auth_prefix, self.api_key),
+            )
+            .header("Content-Type", "application/json")
+            .json(body);
+
+        for (key, value) in &self.extra_headers {
+            req = req.header(key.as_str(), value.as_str());
+        }
+
+        req
     }
 }
 
@@ -152,14 +206,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 let url = url.clone();
                 async move {
                     let resp = self
-                        .client
-                        .post(&url)
-                        .header(
-                            &self.auth_header,
-                            format!("{}{}", self.auth_prefix, self.api_key),
-                        )
-                        .header("Content-Type", "application/json")
-                        .json(&req)
+                        .build_request(&url, &req)
                         .send()
                         .await
                         .map_err(|e| RuntimeError::ProviderError {
@@ -219,14 +266,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 let url = url.clone();
                 async move {
                     let r = self
-                        .client
-                        .post(&url)
-                        .header(
-                            &self.auth_header,
-                            format!("{}{}", self.auth_prefix, self.api_key),
-                        )
-                        .header("Content-Type", "application/json")
-                        .json(&req)
+                        .build_request(&url, &req)
                         .send()
                         .await
                         .map_err(|e| RuntimeError::ProviderError {
@@ -392,5 +432,35 @@ mod tests {
         let result = parse_sse_line(line).unwrap().unwrap();
         assert_eq!(result.choices.len(), 1);
         assert!(result.choices[0].delta.content.is_none());
+    }
+
+    #[test]
+    fn test_from_config_with_registry() {
+        let cfg = crate::provider::ProviderRegistry::config(&hermes_common::Provider::DeepSeek);
+        let provider = OpenAiCompatibleProvider::from_config(
+            &cfg,
+            "key".to_string(),
+            None,
+            None,
+            "deepseek",
+        );
+        assert_eq!(provider.name(), "deepseek");
+        assert_eq!(provider.default_model(), "deepseek-chat");
+        assert_eq!(provider.base_url(), "https://api.deepseek.com/v1");
+    }
+
+    #[test]
+    fn test_from_config_with_overrides() {
+        let cfg = crate::provider::ProviderRegistry::config(&hermes_common::Provider::OpenAI);
+        let provider = OpenAiCompatibleProvider::from_config(
+            &cfg,
+            "key".to_string(),
+            Some("https://custom.api.com/v1"),
+            Some("gpt-3.5-turbo"),
+            "custom",
+        );
+        assert_eq!(provider.name(), "custom");
+        assert_eq!(provider.default_model(), "gpt-3.5-turbo");
+        assert_eq!(provider.base_url(), "https://custom.api.com/v1");
     }
 }

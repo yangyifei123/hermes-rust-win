@@ -2,6 +2,7 @@
 
 use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider, ToolCall as ProviderToolCall};
 use crate::tool::ToolRegistry;
+use crate::usage::UsageAccumulator;
 use crate::RuntimeError;
 use futures::Stream;
 use futures::StreamExt;
@@ -78,6 +79,7 @@ pub struct Agent {
     config: AgentConfig,
     model: String,
     budget: Arc<IterationBudget>,
+    usage: std::sync::Mutex<UsageAccumulator>,
 }
 
 impl Agent {
@@ -98,6 +100,7 @@ impl Agent {
             config,
             model,
             budget,
+            usage: std::sync::Mutex::new(UsageAccumulator::new()),
         }
     }
 
@@ -434,6 +437,13 @@ impl Agent {
                     total_tokens: u.total_tokens,
                 });
 
+                // Record usage in accumulator
+                if let Some(ref usage) = token_usage {
+                    if let Ok(mut acc) = self.usage.lock() {
+                        acc.record(&self.model, usage.input_tokens, usage.output_tokens);
+                    }
+                }
+
                 return Ok(AgentResponse {
                     content: current_content,
                     tool_calls_made,
@@ -557,6 +567,19 @@ impl Agent {
     /// Check whether streaming mode is enabled
     pub fn streaming_enabled(&self) -> bool {
         self.config.streaming
+    }
+
+    /// Get a snapshot of accumulated usage stats.
+    pub fn usage_summary(&self) -> String {
+        match self.usage.lock() {
+            Ok(acc) => acc.summary(),
+            Err(_) => "Usage unavailable".to_string(),
+        }
+    }
+
+    /// Get total cost in USD.
+    pub fn total_cost(&self) -> f64 {
+        self.usage.lock().map(|acc| acc.total_cost_usd).unwrap_or(0.0)
     }
 
     /// Append an assistant message to the session (public for ChatRepl streaming)

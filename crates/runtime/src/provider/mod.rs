@@ -389,61 +389,37 @@ impl ProviderRegistry {
 pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, base_url: Option<&str>)
     -> Box<dyn LlmProvider>
 {
-    let cfg = ProviderRegistry::config(provider_type);
+    use hermes_common::Provider;
 
-    // Prefer caller-supplied base_url, then the registry config, then a
-    // sensible fallback for truly dynamic providers (Azure, Custom).
-    let url = base_url.map(str::to_string).unwrap_or_else(|| {
-        if cfg.base_url.is_empty() {
-            match provider_type {
-                hermes_common::Provider::Anthropic => "https://api.anthropic.com/v1".to_string(),
-                _ => "https://api.openai.com/v1".to_string(),
-            }
-        } else {
-            cfg.base_url.clone()
-        }
-    });
-
+    // --- Providers with their own API format ---
     match provider_type {
-        hermes_common::Provider::Anthropic => {
+        Provider::Anthropic => {
+            let cfg = ProviderRegistry::config(provider_type);
+            let url = base_url.unwrap_or(&cfg.base_url);
             Box::new(crate::provider::anthropic::AnthropicProvider::new(
                 api_key.to_string(),
-                Some(&url),
+                Some(url),
                 Some(&cfg.default_model),
             ))
         }
-        hermes_common::Provider::Gemini => {
+        Provider::Gemini => {
+            let cfg = ProviderRegistry::config(provider_type);
+            let url = base_url.unwrap_or(&cfg.base_url);
             Box::new(crate::provider::gemini::GeminiProvider::new(
                 api_key.to_string(),
-                Some(&url),
+                Some(url),
                 Some(&cfg.default_model),
             ))
         }
-        hermes_common::Provider::DeepSeek => {
-            Box::new(crate::provider::providers::create_deepseek_provider(
-                api_key.to_string(), Some(&url), Some(&cfg.default_model),
-            ))
-        }
-        hermes_common::Provider::Ollama => {
-            Box::new(crate::provider::providers::create_ollama_provider(
-                Some(&url), Some(&cfg.default_model),
-            ))
-        }
-        hermes_common::Provider::Azure => {
-            Box::new(crate::provider::providers::create_azure_provider(
-                api_key.to_string(), Some(&url), Some(&cfg.default_model),
-            ))
-        }
-        hermes_common::Provider::OpenRouter => {
-            Box::new(crate::provider::providers::create_openrouter_provider(
-                api_key.to_string(), Some(&url), Some(&cfg.default_model),
-            ))
-        }
+        // --- All OpenAI-compatible providers: use registry + from_config() ---
         _ => {
-            Box::new(crate::provider::openai::OpenAiProvider::new(
+            let cfg = ProviderRegistry::config(provider_type);
+            Box::new(crate::provider::openai_compatible::OpenAiCompatibleProvider::from_config(
+                &cfg,
                 api_key.to_string(),
-                Some(&url),
-                Some(&cfg.default_model),
+                base_url,
+                None, // model override: use registry default
+                provider_type.as_str(),
             ))
         }
     }
@@ -500,21 +476,21 @@ mod tests {
     fn test_create_provider_kimi() {
         // Kimi uses OpenAI-compatible API
         let provider = create_provider(&Provider::Kimi, "test-key", None);
-        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.name(), "kimi");
         assert_eq!(provider.default_model(), "kimi-k2.5");
     }
 
     #[test]
     fn test_create_provider_minimax() {
         let provider = create_provider(&Provider::MiniMax, "test-key", None);
-        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.name(), "minimax");
         assert_eq!(provider.default_model(), "MiniMax-M2.7");
     }
 
     #[test]
     fn test_create_provider_zai() {
         let provider = create_provider(&Provider::Zai, "test-key", None);
-        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.name(), "zai");
         assert_eq!(provider.default_model(), "glm-5");
     }
 
@@ -528,7 +504,7 @@ mod tests {
     #[test]
     fn test_create_provider_groq() {
         let provider = create_provider(&Provider::Groq, "test-key", None);
-        assert_eq!(provider.name(), "openai");
+        assert_eq!(provider.name(), "groq");
         assert_eq!(provider.default_model(), "llama-3.1-70b-versatile");
     }
 

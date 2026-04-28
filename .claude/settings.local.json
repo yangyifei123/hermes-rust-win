@@ -15,7 +15,9 @@
       "Bash(git commit -m 'feat\\(runtime\\): provider registry with configs for all 22 providers *)",
       "Bash(git commit -m 'feat\\(cli-core\\): credential pool with failover and round-robin *)",
       "Bash(git commit -m 'feat: Wave 2 — generic provider, Gemini, credential pool, usage tracking *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git commit -m 'feat\\(runtime\\): individual provider factories for DeepSeek, Ollama, Azure, OpenRouter *)",
+      "Bash(awk 'NR>=580 && NR<=600' crates/runtime/src/agent/mod.rs)"
     ]
   }
 }
