@@ -216,6 +216,40 @@ impl ChatRepl {
                     token_usage: None,
                 })
             }
+            "system" => {
+                if _args.is_empty() {
+                    // /system — show current system prompt
+                    let prompt = self.agent.system_prompt().to_string();
+                    let display = if prompt.is_empty() { "(empty)".to_string() } else { prompt };
+                    Ok(AgentResponse {
+                        content: display,
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                        token_usage: None,
+                    })
+                } else if _args.trim() == "reset" {
+                    self.agent.set_system_prompt(String::new());
+                    Ok(AgentResponse {
+                        content: "System prompt cleared.".to_string(),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                        token_usage: None,
+                    })
+                } else {
+                    // /system <text> — set system prompt
+                    let new_prompt = _args.trim().to_string();
+                    self.agent.set_system_prompt(new_prompt.clone());
+                    Ok(AgentResponse {
+                        content: format!("System prompt set ({} chars).", new_prompt.len()),
+                        tool_calls_made: vec![],
+                        turns_used: self.agent.turns_used(),
+                        session_id: self.session_id,
+                        token_usage: None,
+                    })
+                }
+            }
             "compact" => {
                 let (before, after, tokens_saved) = self.agent.compact_session(&self.session_id, 10)?;
                 if before == after {
@@ -410,10 +444,38 @@ mod tests {
     async fn test_known_models_not_empty() {
         let models = Agent::known_models();
         assert!(!models.is_empty());
-        // Each group should have at least one model
         for (provider, model_list) in &models {
             assert!(!provider.is_empty());
             assert!(!model_list.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn test_system_show_empty() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/system").await.unwrap();
+        assert_eq!(result.content, "(empty)");
+    }
+
+    #[tokio::test]
+    async fn test_system_set_and_show() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        let result = repl.run_turn("/system You are a pirate").await.unwrap();
+        assert!(result.content.contains("16 chars"));
+        let result2 = repl.run_turn("/system").await.unwrap();
+        assert_eq!(result2.content, "You are a pirate");
+    }
+
+    #[tokio::test]
+    async fn test_system_reset() {
+        let agent = make_agent();
+        let mut repl = ChatRepl::new(agent).unwrap();
+        repl.run_turn("/system test prompt").await.unwrap();
+        let result = repl.run_turn("/system reset").await.unwrap();
+        assert_eq!(result.content, "System prompt cleared.");
+        let result2 = repl.run_turn("/system").await.unwrap();
+        assert_eq!(result2.content, "(empty)");
     }
 }

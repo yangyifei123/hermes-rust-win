@@ -498,6 +498,16 @@ impl Agent {
         self.model = model;
     }
 
+    /// Get the current system prompt.
+    pub fn system_prompt(&self) -> &str {
+        &self.config.system_prompt
+    }
+
+    /// Change the system prompt.
+    pub fn set_system_prompt(&mut self, prompt: String) {
+        self.config.system_prompt = prompt;
+    }
+
     /// Return a list of well-known models grouped by provider.
     ///
     /// Each entry is `(provider_name, &[model_name])`.  The list is not
@@ -562,6 +572,93 @@ impl Agent {
         let tokens_after = registry.count_messages(&self.model, &after_chat);
 
         Ok((before, after, tokens_before.saturating_sub(tokens_after)))
+    }
+
+    /// Compact session with LLM summarization of old messages.
+    ///
+    /// Instead of deleting middle messages, summarize them into a single
+    /// context summary message. Keeps system prompt + summary + recent N.
+    pub async fn compact_with_summary(
+        &self,
+        session_id: &Uuid,
+        keep_recent: usize,
+    ) -> Result<(usize, usize, String), RuntimeError> {
+        let messages = self.get_history(session_id)?;
+        let before = messages.len();
+
+        let system_count = messages.iter().take_while(|m| m.role == MessageRole::System).count();
+
+        // Messages to summarize (between system and recent)
+        let summarize_count = before.saturating_sub(system_count + keep_recent);
+        if summarize_count == 0 {
+            return Ok((before, before, "No messages to summarize.".to_string()));
+        }
+
+        // Build text of messages to summarize
+        let to_summarize: Vec<String> = messages[system_count..system_count + summarize_count]
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    MessageRole::User => "User",
+                    MessageRole::Assistant => "Assistant",
+                    MessageRole::Tool => "Tool",
+                    MessageRole::System => "System",
+                };
+                format!("[{}]: {}", role, m.content)
+            })
+            .collect();
+        let conversation_text = to_summarize.join("\n\n");
+
+        // Ask LLM to summarize
+        let summary_prompt = format!(
+            "Summarize the following conversation in a concise paragraph. \
+             Preserve key facts, decisions, code snippets, and action items. \
+             Omit pleasantries.\n\n{}",
+            conversation_text
+        );
+
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages: vec![ChatMessage::user(&summary_prompt)],
+            tools: None,
+            max_tokens: Some(1024),
+            temperature: Some(0.3),
+            stream: None,
+        };
+
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.timeout_secs),
+            self.provider.chat_completion(request),
+        )
+        .await
+        .map_err(|_| RuntimeError::TimeoutError { duration_secs: self.config.timeout_secs })?
+        ?;
+
+        let summary = response
+            .choices
+            .first()
+            .map(|c| c.message.text().to_string())
+            .unwrap_or_default();
+
+        // Delete old messages
+        self.session_store
+            .truncate_messages(session_id, system_count, keep_recent)
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+
+        // Insert summary as a system message after existing system messages
+        let summary_content = format!("[Context Summary]: {}", summary);
+        self.session_store
+            .append_message(session_id, MessageRole::System, &summary_content)
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+
+        let after = self.get_history(session_id)?.len();
+        let summary_preview = if summary.len() > 200 {
+            format!("{}...", &summary[..200])
+        } else {
+            summary
+        };
+
+        Ok((before, after, summary_preview))
     }
 
     /// Check whether streaming mode is enabled

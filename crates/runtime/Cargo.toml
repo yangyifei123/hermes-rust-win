@@ -22,3 +22,6 @@ futures = { workspace = true }
 regex = "1.11"
 urlencoding = "2.1"
 tiktoken-rs = "0.5"
+
+[dev-dependencies]
+wiremock = "0.6"

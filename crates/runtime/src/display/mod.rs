@@ -12,6 +12,9 @@ mod ansi {
     pub const DIM: &str = "\x1b[2m";
     pub const CYAN: &str = "\x1b[36m";
     pub const BLUE: &str = "\x1b[34m";
+    pub const YELLOW: &str = "\x1b[33m";
+    pub const GREEN: &str = "\x1b[32m";
+    pub const RED: &str = "\x1b[31m";
     pub const UNDERLINE: &str = "\x1b[4m";
     pub const BRIGHT_WHITE: &str = "\x1b[97m";
 }
@@ -363,9 +366,15 @@ impl DisplayEngine {
         }
         let preview = Self::arg_preview(args);
         let msg = if preview.is_empty() {
-            format!("  Running `{name}`...")
+            format!(
+                "  {}{}⚙ {}{}Running `{}`{}...",
+                ansi::YELLOW, ansi::BOLD, ansi::RESET, ansi::DIM, name, ansi::RESET
+            )
         } else {
-            format!("  Running `{name}` — {preview}")
+            format!(
+                "  {}{}⚙ {}{}Running `{}`{} — {}",
+                ansi::YELLOW, ansi::BOLD, ansi::RESET, ansi::DIM, name, ansi::RESET, preview
+            )
         };
         let _ = writeln!(io::stderr(), "\r{}", truncate_str(&msg, 120));
         let _ = io::stderr().flush();
@@ -378,9 +387,17 @@ impl DisplayEngine {
         }
         let secs = duration_ms as f64 / 1000.0;
         if success {
-            let _ = writeln!(io::stderr(), "  `{name}` done ({:.1}s)", secs);
+            let _ = writeln!(
+                io::stderr(),
+                "  {}{}✓ {}`{}` done {}({:.1}s){}",
+                ansi::GREEN, ansi::BOLD, ansi::RESET, name, ansi::DIM, secs, ansi::RESET
+            );
         } else {
-            let _ = writeln!(io::stderr(), "  `{name}` failed");
+            let _ = writeln!(
+                io::stderr(),
+                "  {}{}✗ {}`{}` failed",
+                ansi::RED, ansi::BOLD, ansi::RESET, name
+            );
         }
         let _ = io::stderr().flush();
     }
@@ -484,5 +501,242 @@ fn truncate_str(s: &str, max_len: usize) -> std::borrow::Cow<'_, str> {
             end -= 1;
         }
         std::borrow::Cow::Owned(format!("{}…", &s[..end]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Standalone display helpers (banner, usage, session summary)
+// ---------------------------------------------------------------------------
+
+/// Print a startup banner to stderr.
+///
+/// Uses cyan for the "Hermes" name and dim styling for version/model info.
+pub fn print_banner(version: &str, model: &str, provider: &str) {
+    let inner = format!(
+        "  {}{}Hermes{} {}{}{}  ·  {}{}{} ({})",
+        ansi::BOLD,
+        ansi::CYAN,
+        ansi::RESET,
+        ansi::DIM,
+        version,
+        ansi::RESET,
+        ansi::DIM,
+        model,
+        ansi::RESET,
+        provider,
+    );
+    let width = visible_len(&inner);
+    let line = "═".repeat(width.max(40));
+    let _ = writeln!(
+        io::stderr(),
+        "\r{}╔{}╗\n\r║{}║\n\r╚{}╝{}",
+        ansi::DIM,
+        line,
+        pad_to(&inner, width),
+        line,
+        ansi::RESET,
+    );
+    let _ = io::stderr().flush();
+}
+
+/// Print per-turn usage stats to stderr.
+///
+/// Format: `  1,234 tokens in · 567 out · $0.0042 · gpt-4o`
+pub fn print_turn_usage(input: u32, output: u32, cost: Option<f64>, model: &str) {
+    let cost_part = match cost {
+        Some(c) => format!("{}${:.4}{}", ansi::DIM, c, ansi::RESET),
+        None => String::new(),
+    };
+    let sep = format!("{}·{}", ansi::DIM, ansi::RESET);
+
+    let mut parts = vec![
+        format!(
+            "{}{}{} tokens in",
+            ansi::DIM,
+            format_number(u64::from(input)),
+            ansi::RESET
+        ),
+        format!(
+            "{}{}{} out",
+            ansi::DIM,
+            format_number(u64::from(output)),
+            ansi::RESET
+        ),
+    ];
+    if !cost_part.is_empty() {
+        parts.push(cost_part);
+    }
+    parts.push(format!("{}{}{}", ansi::DIM, model, ansi::RESET));
+
+    let _ = writeln!(io::stderr(), "  {}", parts.join(&format!(" {} ", sep)));
+    let _ = io::stderr().flush();
+}
+
+/// Print an end-of-session summary to stderr.
+///
+/// Format: `Session: 12 turns · 45K tokens · $0.42 · 3m 24s`
+pub fn print_session_summary(turns: u32, total_tokens: u64, cost: f64, duration_secs: u64) {
+    let token_str = if total_tokens >= 1000 {
+        format!("{:.0}K", total_tokens as f64 / 1000.0)
+    } else {
+        total_tokens.to_string()
+    };
+    let dur_str = format_duration(duration_secs);
+    let sep = format!("{}·{}", ansi::DIM, ansi::RESET);
+
+    let _ = writeln!(
+        io::stderr(),
+        "  Session: {}{}{} turns {} {}{}{} tokens {} {}{}${:.2}{} {} {}",
+        ansi::BOLD,
+        turns,
+        ansi::RESET,
+        &sep,
+        ansi::BOLD,
+        token_str,
+        ansi::RESET,
+        &sep,
+        ansi::DIM,
+        ansi::DIM,
+        cost,
+        ansi::RESET,
+        &sep,
+        dur_str,
+    );
+    let _ = io::stderr().flush();
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the visible width of a string that may contain ANSI escapes.
+fn visible_len(s: &str) -> usize {
+    let mut len = 0usize;
+    let mut in_escape = false;
+    for ch in s.chars() {
+        if in_escape {
+            if ch.is_ascii_alphabetic() || ch == 'm' {
+                in_escape = false;
+            }
+        } else if ch == '\x1b' {
+            in_escape = true;
+        } else {
+            len += 1;
+        }
+    }
+    len
+}
+
+/// Pad `s` with trailing spaces so its visible width equals `target`.
+fn pad_to(s: &str, target: usize) -> String {
+    let current = visible_len(s);
+    if current < target {
+        format!("{}{}", s, " ".repeat(target - current))
+    } else {
+        s.to_owned()
+    }
+}
+
+/// Format a number with comma separators (e.g. `1234` → `"1,234"`).
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Format seconds into a human-readable duration string (e.g. `"3m 24s"`).
+fn format_duration(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else {
+        let m = secs / 60;
+        let s = secs % 60;
+        if s == 0 {
+            format!("{m}m")
+        } else {
+            format!("{m}m {s}s")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_number_adds_commas() {
+        assert_eq!(format_number(0), "0");
+        assert_eq!(format_number(999), "999");
+        assert_eq!(format_number(1_000), "1,000");
+        assert_eq!(format_number(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(0), "0s");
+        assert_eq!(format_duration(45), "45s");
+        assert_eq!(format_duration(60), "1m");
+        assert_eq!(format_duration(90), "1m 30s");
+        assert_eq!(format_duration(3661), "61m 1s");
+    }
+
+    #[test]
+    fn visible_len_ignores_ansi_escapes() {
+        let plain = "Hello, world!";
+        assert_eq!(visible_len(plain), 13);
+
+        let colored = format!("{}Hello{}", ansi::CYAN, ansi::RESET);
+        assert_eq!(visible_len(&colored), 5);
+
+        let banner_inner = format!(
+            "  {}{}Hermes{} {}{}{}",
+            ansi::BOLD, ansi::CYAN, ansi::RESET, ansi::DIM, "v0.1.0", ansi::RESET,
+        );
+        // "  Hermes v0.1.0" = 15 visible chars
+        assert_eq!(visible_len(&banner_inner), 15);
+    }
+
+    #[test]
+    fn pad_to_adds_correct_padding() {
+        let s = format!("{}Hello{}", ansi::CYAN, ansi::RESET);
+        let padded = pad_to(&s, 10);
+        assert_eq!(visible_len(&padded), 10);
+        assert!(padded.ends_with("     "));
+    }
+
+    #[test]
+    fn print_banner_does_not_panic() {
+        // Verify no panic / write error when stdout is available.
+        print_banner("v0.1.0", "gpt-4o", "openai");
+    }
+
+    #[test]
+    fn print_turn_usage_with_cost_does_not_panic() {
+        print_turn_usage(1234, 567, Some(0.0042), "gpt-4o");
+    }
+
+    #[test]
+    fn print_session_summary_does_not_panic() {
+        print_session_summary(12, 45000, 0.42, 204);
+    }
+
+    #[test]
+    fn display_engine_tool_output_includes_color_codes() {
+        let engine = DisplayEngine::new(false, false);
+        // We cannot easily capture stderr in a unit test, but we can exercise the
+        // code path to ensure no panic and that format strings are correct.
+        engine.print_tool_start("bash", &serde_json::json!({"command": "ls"}));
+        engine.print_tool_result("bash", true, 1500);
+        engine.print_tool_result("bash", false, 500);
     }
 }

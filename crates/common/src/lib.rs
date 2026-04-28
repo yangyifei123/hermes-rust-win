@@ -4,6 +4,7 @@
 
 pub mod error;
 pub mod model_metadata;
+pub mod model_router;
 pub mod provider;
 pub mod string;
 pub mod types;

@@ -643,6 +643,11 @@ pub fn get_model_metadata(name: &str) -> Option<&'static ModelMetadata> {
     })
 }
 
+/// Return a reference to the full static model registry.
+pub fn all_models() -> &'static [ModelMetadata] {
+    &MODEL_REGISTRY
+}
+
 /// List all models for a given provider.
 pub fn list_models_by_provider(provider: &Provider) -> Vec<&'static ModelMetadata> {
     MODEL_REGISTRY
