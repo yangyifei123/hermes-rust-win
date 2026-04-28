@@ -77,6 +77,15 @@ impl CredentialPool {
         }
     }
 
+    /// Create a pool pre-loaded from an AuthStore's credentials.
+    pub fn from_auth_store(auth: &crate::auth::AuthStore) -> Self {
+        let pool = Self::new();
+        for cred in &auth.credentials {
+            pool.add(&cred.provider, cred.api_key.clone(), cred.base_url.clone());
+        }
+        pool
+    }
+
     /// Add a credential for a provider.
     pub fn add(&self, provider: &str, api_key: String, base_url: Option<String>) {
         let mut pool = self.pool.lock().unwrap();

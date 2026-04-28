@@ -1065,11 +1065,11 @@ async fn handle_chat(
     let provider_type = hermes_common::Provider::from_str(provider_str)
         .unwrap_or(hermes_common::Provider::OpenAI);
 
-    // Resolve API key: auth store > env var
+    // Resolve API key: credential pool (round-robin) > env var
     let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
-    let credential = auth_store.get(provider_str);
-    let api_key = credential
-        .map(|c| c.api_key.clone())
+    let cred_pool = crate::credential_pool::CredentialPool::from_auth_store(&auth_store);
+    let api_key = cred_pool.get(provider_str)
+        .map(|c| c.api_key)
         .or_else(|| std::env::var(format!("{}_API_KEY", provider_str.to_uppercase())).ok())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
@@ -1083,8 +1083,8 @@ async fn handle_chat(
         }
     };
 
-    // Resolve base_url: credential store > config > provider default
-    let base_url_owned = credential
+    // Resolve base_url: pool entry > config > provider default
+    let base_url_owned = auth_store.get(provider_str)
         .and_then(|c| c.base_url.clone())
         .or_else(|| if user_config.model.base_url.is_empty() { None } else { Some(user_config.model.base_url.clone()) });
     let base_url = base_url_owned.as_deref();
