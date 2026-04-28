@@ -6,12 +6,15 @@ A fast, native AI agent CLI for Windows. Chat with any LLM, execute tools, manag
 
 ## Features
 
-- **Multi-Provider**: OpenAI, Anthropic, Groq, DeepSeek, Ollama, and 15+ more via OpenAI-compatible API
+- **Multi-Provider**: OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama, Azure, OpenRouter, and 15+ more
 - **Streaming**: Real-time token streaming with tool call support
 - **Tool System**: Terminal, file I/O, web search — extensible via trait
 - **Session Persistence**: SQLite-backed conversation history with resume
 - **Context Management**: Tiktoken-based token counting, auto-truncation, `/compact` command
 - **Markdown Rendering**: Terminal-formatted output (headers, code, bold, links)
+- **Cost Tracking**: Per-session token usage and cost estimation
+- **Credential Pool**: Multi-key per provider with round-robin and failover
+- **Skills System**: Reusable prompt templates loaded from `~/.hermes/skills/`
 - **Ctrl+C Safety**: Graceful shutdown preserves your session
 
 ## Quick Start
@@ -112,9 +115,9 @@ model:
 
 ## Stats
 
-- **53 Rust source files**, **17K lines**
-- **355 tests**, **0 clippy warnings**
-- Supports **20+ LLM providers**
+- **59 Rust source files**, **19K lines**
+- **408 tests**, **0 clippy warnings**
+- Supports **22+ LLM providers**
 
 ## Requirements
 
