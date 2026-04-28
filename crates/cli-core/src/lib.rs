@@ -909,7 +909,8 @@ fn ensure_disk_space(threshold_gb: f64) -> f64 {
             info!("C drive low: {:.2}GB free (threshold: {:.2}GB), auto-cleaning...", free_gb, threshold_gb);
 
             // Clean cargo target on E: drive
-            let _ = std::fs::remove_dir_all("E:\\AI_field\\hermes-rust-win\\target");
+            let target_dir = std::env::current_dir().unwrap_or_default().join("target");
+            let _ = std::fs::remove_dir_all(&target_dir);
 
             // Clean C: caches
             let home = std::env::var("USERPROFILE").unwrap_or("C:\\Users\\Default".to_string());
@@ -986,8 +987,8 @@ pub async fn run() -> Result<()> {
     });
 
     match &command {
-        Commands::Chat { model, query, system, provider, max_turns, yolo, quiet, .. } => {
-            handle_chat(model.clone(), query.clone(), system.clone(), provider.clone(), *max_turns, *yolo, *quiet).await?;
+        Commands::Chat { model, query, system, provider, max_turns, yolo, quiet, chat_verbose, .. } => {
+            handle_chat(model.clone(), query.clone(), system.clone(), provider.clone(), *max_turns, *yolo, *quiet, *chat_verbose).await?;
         }
         Commands::Auth(ref cmd) => commands::handle_auth(cmd.clone()).await?,
         Commands::Model { current, global, model, portal_url: _, inference_url: _, client_id: _, scope: _, no_browser: _, timeout: _, ca_bundle: _, insecure: _ } =>
@@ -1040,7 +1041,37 @@ fn init_logging(verbose: bool, debug: bool) {
         .init();
 }
 
+/// Handle /skill commands using the SkillStore.
+fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyhow::Result<Option<String>> {
+    let store = crate::skills_store::SkillStore::new()?;
+    let agent = repl.agent_mut();
+
+    if args.is_empty() || args == "list" {
+        let skills = store.list_skills()?;
+        if skills.is_empty() {
+            return Ok(Some("No skills available.".to_string()));
+        }
+        let mut out = String::from("Available skills:\n");
+        for s in &skills {
+            let cat = s.category.as_deref().unwrap_or("");
+            let cat_tag = if cat.is_empty() { String::new() } else { format!(" [{}]", cat) };
+            out.push_str(&format!("  {}{} — {}\n", s.name, cat_tag, s.description));
+        }
+        Ok(Some(out))
+    } else if args == "help" {
+        Ok(Some("Usage:\n  /skill list        — list available skills\n  /skill <name>      — load skill into system prompt\n  /skill off         — clear skill (reset system prompt)".to_string()))
+    } else if args == "off" {
+        agent.set_system_prompt(String::new());
+        Ok(Some("Skill unloaded. System prompt cleared.".to_string()))
+    } else {
+        let skill = store.load_skill(args)?;
+        agent.set_system_prompt(skill.prompt.clone());
+        Ok(Some(format!("Skill '{}' loaded. System prompt set ({} chars).", skill.name, skill.prompt.len())))
+    }
+}
+
 /// Handle the `hermes chat` command — wire CLI to runtime
+#[allow(clippy::too_many_arguments)]
 async fn handle_chat(
     model: Option<String>,
     query: Option<String>,
@@ -1049,6 +1080,7 @@ async fn handle_chat(
     max_turns: Option<u32>,
     yolo: bool,
     quiet: bool,
+    _verbose: bool,
 ) -> anyhow::Result<()> {
     use hermes_runtime::{Agent, AgentConfig, ChatRepl};
     use hermes_runtime::provider::create_provider;
@@ -1062,7 +1094,7 @@ async fn handle_chat(
     let provider_str = provider.as_deref()
         .or_else(|| if user_config.model.provider.is_empty() { None } else { Some(&user_config.model.provider) })
         .unwrap_or("openai");
-    let provider_type = hermes_common::Provider::from_str(provider_str)
+    let provider_type = provider_str.parse::<hermes_common::Provider>()
         .unwrap_or(hermes_common::Provider::OpenAI);
 
     // Resolve API key: credential pool (round-robin) > env var
@@ -1134,9 +1166,7 @@ async fn handle_chat(
     } else {
         // Interactive REPL mode
         if !quiet {
-            println!("Hermes Agent v{} — model: {}", env!("CARGO_PKG_VERSION"), model);
-            println!("Type /help for commands, /quit to exit");
-            println!();
+            hermes_runtime::display::print_banner(env!("CARGO_PKG_VERSION"), &model, provider_str);
         }
 
         let mut repl = ChatRepl::new(agent)
@@ -1177,6 +1207,17 @@ async fn handle_chat(
                 continue;
             }
 
+            // Handle /skill commands at CLI level (SkillStore lives in cli-core)
+            if input.starts_with("/skill") {
+                let skill_args = input.strip_prefix("/skill").unwrap_or("").trim();
+                match handle_skill_command(skill_args, &mut repl) {
+                    Ok(Some(msg)) => println!("{}", msg),
+                    Ok(None) => break,
+                    Err(e) => eprintln!("Skill error: {}", e),
+                }
+                continue;
+            }
+
             // Run the turn, but allow Ctrl+C to cancel long-running LLM calls
             let turn_result = tokio::select! {
                 result = repl.run_turn(input) => result,
@@ -1189,12 +1230,27 @@ async fn handle_chat(
             };
 
             match turn_result {
-                Ok(response) => println!("{}", response.content),
+                Ok(response) => {
+                    println!("{}", response.content);
+                    // Show per-turn usage if available
+                    if let Some(ref usage) = response.token_usage {
+                        let cost = hermes_common::model_metadata::estimate_cost(&model, usage.input_tokens, usage.output_tokens);
+                        hermes_runtime::display::print_turn_usage(usage.input_tokens, usage.output_tokens, cost, &model);
+                    }
+                }
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("REPL exited") {
-                        let session_id = repl.graceful_shutdown();
-                        println!("Session {} saved. Goodbye!", session_id);
+                        if !quiet {
+                            hermes_runtime::display::print_session_summary(
+                                repl.agent().turns_used(),
+                                0,
+                                0.0,
+                                0,
+                            );
+                            let session_id = repl.graceful_shutdown();
+                            println!("Session {} saved. Goodbye!", session_id);
+                        }
                         break;
                     }
                     eprintln!("Error: {}", msg);

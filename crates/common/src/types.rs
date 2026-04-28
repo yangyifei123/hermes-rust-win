@@ -41,40 +41,47 @@ pub enum Provider {
     Custom,
     // Groq - Ultra-fast inference
     Groq,
+    // Mistral
+    Mistral,
+    // Cohere
+    Cohere,
+}
+
+impl std::str::FromStr for Provider {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "openai" => Ok(Provider::OpenAI),
+            "anthropic" => Ok(Provider::Anthropic),
+            "openrouter" => Ok(Provider::OpenRouter),
+            "ollama" => Ok(Provider::Ollama),
+            "azure" | "azure-openai" => Ok(Provider::Azure),
+            "gemini" | "google" => Ok(Provider::Gemini),
+            "zai" | "zhipu" | "glm" => Ok(Provider::Zai),
+            "kimi" | "moonshot" => Ok(Provider::Kimi),
+            "kimi-cn" | "moonshot-cn" => Ok(Provider::KimiCn),
+            "minimax" => Ok(Provider::MiniMax),
+            "minimax-cn" => Ok(Provider::MiniMaxCn),
+            "arcee" => Ok(Provider::Arcee),
+            "ai-gateway" | "aigateway" => Ok(Provider::AiGateway),
+            "kilocode" => Ok(Provider::Kilocode),
+            "opencode-zen" | "opencodezen" => Ok(Provider::OpenCodeZen),
+            "opencode-go" | "opencodego" => Ok(Provider::OpenCodeGo),
+            "copilot" => Ok(Provider::Copilot),
+            "copilot-acp" | "copilotacp" => Ok(Provider::CopilotAcp),
+            "huggingface" | "hf" => Ok(Provider::HuggingFace),
+            "deepseek" => Ok(Provider::DeepSeek),
+            "groq" => Ok(Provider::Groq),
+            "mistral" => Ok(Provider::Mistral),
+            "cohere" => Ok(Provider::Cohere),
+            "custom" => Ok(Provider::Custom),
+            other => Err(format!("unknown provider: {}", other)),
+        }
+    }
 }
 
 impl Provider {
-    /// Parse a provider name string into a Provider enum.
-    /// Case-insensitive, supports both kebab-case and snake_case.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "openai" => Some(Provider::OpenAI),
-            "anthropic" => Some(Provider::Anthropic),
-            "openrouter" => Some(Provider::OpenRouter),
-            "ollama" => Some(Provider::Ollama),
-            "azure" | "azure-openai" => Some(Provider::Azure),
-            "gemini" | "google" => Some(Provider::Gemini),
-            "zai" | "zhipu" | "glm" => Some(Provider::Zai),
-            "kimi" | "moonshot" => Some(Provider::Kimi),
-            "kimi-cn" | "moonshot-cn" => Some(Provider::KimiCn),
-            "minimax" => Some(Provider::MiniMax),
-            "minimax-cn" => Some(Provider::MiniMaxCn),
-            "arcee" => Some(Provider::Arcee),
-            "ai-gateway" | "aigateway" => Some(Provider::AiGateway),
-            "kilocode" => Some(Provider::Kilocode),
-            "opencode-zen" | "opencodezen" => Some(Provider::OpenCodeZen),
-            "opencode-go" | "opencodego" => Some(Provider::OpenCodeGo),
-            "copilot" => Some(Provider::Copilot),
-            "copilot-acp" | "copilotacp" => Some(Provider::CopilotAcp),
-            "huggingface" | "hf" => Some(Provider::HuggingFace),
-            "deepseek" => Some(Provider::DeepSeek),
-            "groq" => Some(Provider::Groq),
-            "custom" => Some(Provider::Custom),
-            _ => None,
-        }
-    }
-
     /// Get the canonical kebab-case name for this provider.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -99,6 +106,8 @@ impl Provider {
             Provider::HuggingFace => "huggingface",
             Provider::DeepSeek => "deepseek",
             Provider::Groq => "groq",
+            Provider::Mistral => "mistral",
+            Provider::Cohere => "cohere",
             Provider::Custom => "custom",
         }
     }
@@ -127,6 +136,8 @@ impl Provider {
             Provider::HuggingFace => "Qwen/Qwen3.5-397B-A17B",
             Provider::DeepSeek => "deepseek-chat",
             Provider::Groq => "llama-3.1-70b-versatile",
+            Provider::Mistral => "mistral-large-latest",
+            Provider::Cohere => "command-r-plus",
             Provider::Custom => "custom",
         }
     }
@@ -155,6 +166,8 @@ impl Provider {
             Provider::HuggingFace => "https://api-inference.huggingface.co/models",
             Provider::DeepSeek => "https://api.deepseek.com/v1",
             Provider::Groq => "https://api.groq.com/openai/v1",
+            Provider::Mistral => "https://api.mistral.ai/v1",
+            Provider::Cohere => "https://api.cohere.ai/v1",
             Provider::Custom => "",
         }
     }
@@ -182,6 +195,8 @@ impl Provider {
             Provider::HuggingFace => "HF_TOKEN",
             Provider::DeepSeek => "DEEPSEEK_API_KEY",
             Provider::Groq => "GROQ_API_KEY",
+            Provider::Mistral => "MISTRAL_API_KEY",
+            Provider::Cohere => "COHERE_API_KEY",
             Provider::Custom => "",
         }
     }
@@ -222,6 +237,8 @@ impl Provider {
             Provider::HuggingFace,
             Provider::DeepSeek,
             Provider::Groq,
+            Provider::Mistral,
+            Provider::Cohere,
             Provider::Custom,
         ]
     }
@@ -354,18 +371,18 @@ mod tests {
 
     #[test]
     fn test_provider_from_str() {
-        assert_eq!(Provider::from_str("openai"), Some(Provider::OpenAI));
-        assert_eq!(Provider::from_str("OpenAI"), Some(Provider::OpenAI));
-        assert_eq!(Provider::from_str("OPENAI"), Some(Provider::OpenAI));
-        assert_eq!(Provider::from_str("anthropic"), Some(Provider::Anthropic));
-        assert_eq!(Provider::from_str("gemini"), Some(Provider::Gemini));
-        assert_eq!(Provider::from_str("zai"), Some(Provider::Zai));
-        assert_eq!(Provider::from_str("zhipu"), Some(Provider::Zai));
-        assert_eq!(Provider::from_str("glm"), Some(Provider::Zai));
-        assert_eq!(Provider::from_str("kimi"), Some(Provider::Kimi));
-        assert_eq!(Provider::from_str("moonshot"), Some(Provider::Kimi));
-        assert_eq!(Provider::from_str("deepseek"), Some(Provider::DeepSeek));
-        assert_eq!(Provider::from_str("unknown"), None);
+        assert_eq!("openai".parse::<Provider>(), Ok(Provider::OpenAI));
+        assert_eq!("OpenAI".parse::<Provider>(), Ok(Provider::OpenAI));
+        assert_eq!("OPENAI".parse::<Provider>(), Ok(Provider::OpenAI));
+        assert_eq!("anthropic".parse::<Provider>(), Ok(Provider::Anthropic));
+        assert_eq!("gemini".parse::<Provider>(), Ok(Provider::Gemini));
+        assert_eq!("zai".parse::<Provider>(), Ok(Provider::Zai));
+        assert_eq!("zhipu".parse::<Provider>(), Ok(Provider::Zai));
+        assert_eq!("glm".parse::<Provider>(), Ok(Provider::Zai));
+        assert_eq!("kimi".parse::<Provider>(), Ok(Provider::Kimi));
+        assert_eq!("moonshot".parse::<Provider>(), Ok(Provider::Kimi));
+        assert_eq!("deepseek".parse::<Provider>(), Ok(Provider::DeepSeek));
+        assert!("unknown".parse::<Provider>().is_err());
     }
 
     #[test]

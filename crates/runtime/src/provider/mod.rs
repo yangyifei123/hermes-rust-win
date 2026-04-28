@@ -362,6 +362,22 @@ impl ProviderRegistry {
                 supports_streaming: true,
                 supports_tools: true,
             },
+            Mistral => ProviderConfig {
+                base_url: "https://api.mistral.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "mistral-large-latest".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
+            Cohere => ProviderConfig {
+                base_url: "https://api.cohere.ai/v1".into(),
+                auth_header: "Authorization".into(),
+                auth_prefix: "Bearer ".into(),
+                default_model: "command-r-plus".into(),
+                supports_streaming: true,
+                supports_tools: true,
+            },
             Custom => ProviderConfig {
                 base_url: String::new(),
                 auth_header: "Authorization".into(),
@@ -506,6 +522,20 @@ mod tests {
         let provider = create_provider(&Provider::Groq, "test-key", None);
         assert_eq!(provider.name(), "groq");
         assert_eq!(provider.default_model(), "llama-3.1-70b-versatile");
+    }
+
+    #[test]
+    fn test_create_provider_mistral() {
+        let provider = create_provider(&Provider::Mistral, "test-key", None);
+        assert_eq!(provider.name(), "mistral");
+        assert_eq!(provider.default_model(), "mistral-large-latest");
+    }
+
+    #[test]
+    fn test_create_provider_cohere() {
+        let provider = create_provider(&Provider::Cohere, "test-key", None);
+        assert_eq!(provider.name(), "cohere");
+        assert_eq!(provider.default_model(), "command-r-plus");
     }
 
     #[test]

@@ -20,7 +20,11 @@
       "Bash(awk 'NR>=580 && NR<=600' crates/runtime/src/agent/mod.rs)",
       "Bash(git commit -m 'feat: skills system, usage accumulator wired, provider registry integration *)",
       "Bash(git commit -m 'feat\\(cli-core\\): wire CredentialPool into provider key resolution *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(awk '{sum+=$1} END {print sum \" tests\"}')",
+      "Bash(awk -F'[;.]' '{gsub\\(/[^0-9]/,\"\",$1\\); sum+=$1} END {print sum \" tests\"}')",
+      "Bash(awk '{s+=$1} END {print s}')",
+      "Bash(awk '{s+=$1} END {print s \" tests\"}')"
     ]
   }
 }

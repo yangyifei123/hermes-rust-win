@@ -175,7 +175,13 @@ impl SessionStore {
                 })
             })
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?
-            .filter_map(|s| s.ok())
+            .filter_map(|r| match r {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!("Skipping corrupted session record: {}", e);
+                    None
+                }
+            })
             .collect();
 
         Ok(sessions)
@@ -255,7 +261,13 @@ impl SessionStore {
                 })
             })
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?
-            .filter_map(|m| m.ok())
+            .filter_map(|r| match r {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!("Skipping corrupted message record: {}", e);
+                    None
+                }
+            })
             .collect();
 
         Ok(messages)

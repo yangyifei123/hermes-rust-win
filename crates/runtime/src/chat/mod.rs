@@ -297,6 +297,16 @@ impl ChatRepl {
         self.session_id
     }
 
+    /// Get a reference to the underlying agent (for usage stats, model info, etc.)
+    pub fn agent(&self) -> &Agent {
+        &self.agent
+    }
+
+    /// Get a mutable reference to the underlying agent (for skill loading, etc.)
+    pub fn agent_mut(&mut self) -> &mut Agent {
+        &mut self.agent
+    }
+
     /// Get message history
     pub fn get_history(&self) -> Result<Vec<hermes_session_db::Message>, RuntimeError> {
         self.agent.get_history(&self.session_id)

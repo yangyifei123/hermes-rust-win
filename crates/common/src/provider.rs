@@ -20,13 +20,11 @@ pub enum ApiMode {
 
 /// Lazy-initialized static mapping of URL hostnames to providers.
 fn get_url_to_provider() -> &'static HashMap<&'static str, Provider> {
-    // Safety: we only write once and never drop the allocation.
-    // Use a leaked Box to get a &'static reference.
-    static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    static mut CACHE: Option<&'static HashMap<&'static str, Provider>> = None;
+    static PROVIDER_MAP: std::sync::OnceLock<HashMap<&'static str, Provider>> =
+        std::sync::OnceLock::new();
 
-    if !ONCE.load(std::sync::atomic::Ordering::Acquire) {
-        let map: HashMap<&'static str, Provider> = HashMap::from([
+    PROVIDER_MAP.get_or_init(|| {
+        HashMap::from([
             ("api.openai.com", Provider::OpenAI),
             ("api.anthropic.com", Provider::Anthropic),
             ("openrouter.ai", Provider::OpenRouter),
@@ -38,20 +36,8 @@ fn get_url_to_provider() -> &'static HashMap<&'static str, Provider> {
             ("api.arcee.ai", Provider::Arcee),
             ("localhost:11434", Provider::Ollama),
             ("api.groq.com", Provider::Groq),
-        ]);
-        let boxed = Box::new(map);
-        // SAFETY: single-threaded init, written once before any read
-        #[allow(static_mut_refs)]
-        unsafe {
-            CACHE = Some(Box::leak(boxed));
-        }
-        ONCE.store(true, std::sync::atomic::Ordering::Release);
-    }
-    #[allow(static_mut_refs)]
-    // SAFETY: written once before this read via the atomic guard above
-    unsafe {
-        CACHE.unwrap()
-    }
+        ])
+    })
 }
 
 /// Detect a provider from a base URL by matching known hostnames.
