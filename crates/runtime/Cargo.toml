@@ -13,7 +13,7 @@ readme.workspace = true
 
 [dependencies]
 hermes-common = { workspace = true }
-hermes-session-db = { path = "../session-db" }
+hermes-session-db = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

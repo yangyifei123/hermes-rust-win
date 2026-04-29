@@ -26,8 +26,8 @@ tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 regex-lite = "0.1"
 uuid = { version = "1.0", features = ["v4"] }
-hermes-runtime = { path = "../runtime" }
-hermes-session-db = { path = "../session-db" }
+hermes-runtime = { workspace = true }
+hermes-session-db = { workspace = true }
 hermes-common = { workspace = true }
 clap_complete = "4"
 
