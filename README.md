@@ -1,108 +1,116 @@
-# Hermes CLI (Rust)
+# Hermes
 
-A fast, native AI agent CLI for Windows. Chat with any LLM, execute tools, manage sessions — all from your terminal.
+The blazing-fast, multi-provider AI agent CLI. Written in Rust.
 
-> Rust rewrite of [hermes-agent](https://github.com/user/hermes-agent) for first-class Windows support.
+```
+$ hermes chat --model gpt-4o
+> Write a Python HTTP server
 
-## Features
+Here's a minimal HTTP server using only the standard library:
 
-- **Multi-Provider**: OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama, Azure, OpenRouter, and 15+ more
-- **Streaming**: Real-time token streaming with tool call support
-- **Tool System**: Terminal, file I/O, web search — extensible via trait
-- **Session Persistence**: SQLite-backed conversation history with resume
-- **Context Management**: Tiktoken-based token counting, auto-truncation, `/compact` command
-- **Markdown Rendering**: Terminal-formatted output (headers, code, bold, links)
-- **Cost Tracking**: Per-session token usage and cost estimation
-- **Credential Pool**: Multi-key per provider with round-robin and failover
-- **Skills System**: Reusable prompt templates loaded from `~/.hermes/skills/`
-- **Ctrl+C Safety**: Graceful shutdown preserves your session
+    from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+    server = HTTPServer(("0.0.0.0", 8080), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+Run it with `python server.py` — serves files from the current directory on port 8080.
+```
+
+## Why Hermes?
+
+| | Hermes | aider | opencode |
+|---|---|---|---|
+| **Providers** | 22+ out of the box | OpenAI/Anthropic only | Limited |
+| **Chinese LLMs** | Zhipu, Kimi, MiniMax | No | No |
+| **Local models** | Ollama (built-in) | Experimental | No |
+| **Install size** | ~5 MB | ~50 MB (Python) | ~100 MB (Node) |
+| **Startup time** | < 50ms | ~2s | ~3s |
+| **Session resume** | SQLite, Ctrl+C safe | No | Limited |
+| **Cost tracking** | Per-turn, per-session | No | No |
+
+## Install
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/yangyifei123/hermes-rust-win/master/install.sh | sh
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/yangyifei123/hermes-rust-win/master/install.ps1 | iex
+
+# Or build from source
+cargo install hermes-agent-cli
+```
 
 ## Quick Start
 
 ```bash
-# Build
-cargo build --release
-
-# Set up API key
+# 1. Set your API key
 hermes auth add openai sk-...
 
-# Start chatting
+# 2. Start chatting
 hermes chat
 
-# Use a specific model/provider
-hermes chat --model gpt-4o --provider openai
+# That's it. Done.
 ```
+
+```bash
+# Use any provider
+hermes chat --provider anthropic --model claude-sonnet-4-20250514
+hermes chat --provider deepseek
+hermes chat --provider ollama     # local models, no API key needed
+
+# Non-interactive: pipe a single query
+hermes chat --query "explain this error: $?" --quiet
+
+# List all supported models
+hermes models
+hermes models --provider openai --pricing
+```
+
+## Features
+
+**22+ LLM Providers** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, Ollama, Azure, OpenRouter, Zhipu (GLM), Kimi (Moonshot), MiniMax, Mistral, Cohere, HuggingFace, and more. Switch freely.
+
+**Tool System** — Execute shell commands, read/write files, search the web, call MCP servers. The agent decides when to use them.
+
+**Session Persistence** — SQLite-backed. Ctrl+C won't lose your conversation. Resume anytime with `hermes sessions`.
+
+**Context Management** — Tiktoken-based token counting, auto-truncation when context fills up, `/compact` to summarize and free space.
+
+**Cost Tracking** — See token usage and estimated cost after every turn. Full session summary on exit.
+
+**Credential Pool** — Add multiple API keys per provider. Hermes load-balances and fails over automatically.
+
+**Skills System** — Save and load reusable prompt templates with `/skill`.
+
+**Streaming** — Real-time token streaming with tool call support.
+
+**Markdown Rendering** — Headers, code blocks, bold, links — all rendered in your terminal.
 
 ## Chat Commands
 
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
-| `/model` | Show current model |
-| `/model <name>` | Switch model |
-| `/model list` | List known models |
-| `/compact` | Compress context (truncate old messages) |
-| `/history` | Show session history |
+| `/model <name>` | Switch model mid-conversation |
+| `/compact` | Summarize and compress context |
 | `/tools` | List available tools |
-| `/new` | Start new session |
+| `/skill list` | List skill templates |
+| `/skill <name>` | Load a skill |
+| `/history` | Show session history |
 | `/save` | Save current session |
-| `/quit` | Exit |
-
-## Architecture
-
-```
-hermes-cli/
-├── crates/
-│   ├── cli/           # Binary entry point (main.rs)
-│   ├── cli-core/      # CLI parsing, commands, auth store, config
-│   ├── common/        # Shared types: Provider enum, Credentials, Model metadata
-│   ├── runtime/       # Agent loop, tool registry, LLM providers, display engine
-│   └── session-db/    # SQLite session persistence
-```
-
-### Key Components
-
-- **Agent** — Core loop: send messages → LLM → parse tool calls → execute tools → loop
-- **LlmProvider** — Trait for provider implementations (OpenAI, Anthropic, Groq...)
-- **ToolRegistry** — Dispatches tool calls to registered tools
-- **TokenizerRegistry** — Model-specific token counting (tiktoken + heuristic fallback)
-- **DisplayEngine** — Tool feedback, spinner, markdown rendering
-- **SessionStore** — SQLite WAL-mode storage for messages and sessions
-
-## Provider Support
-
-| Provider | Streaming | Tool Calls | Notes |
-|----------|-----------|------------|-------|
-| OpenAI | SSE | Yes | GPT-4o, GPT-4, GPT-3.5, o1 |
-| Anthropic | SSE | Yes | Claude 4 Opus/Sonnet/Haiku |
-| Groq | SSE | Yes | Llama 3.1, Mixtral |
-| DeepSeek | SSE | Yes | DeepSeek Chat/Reasoner |
-| Ollama | SSE | Yes | Local models |
-| OpenRouter | SSE | Yes | Multi-provider routing |
-| 15+ more | SSE | Yes | OpenAI-compatible |
-
-## Build Commands
-
-```bash
-cargo build --release     # Release build
-cargo build               # Dev build
-cargo test                # Run all tests
-cargo test <test_name>    # Run specific test
-cargo clippy              # Lint
-cargo fmt                 # Format
-```
+| `/quit` | Exit (session auto-saved) |
 
 ## Configuration
 
-API keys stored in `~/.hermes/credentials.yaml`:
+API keys in `~/.hermes/credentials.yaml`:
 
 ```yaml
 openai:
   api_key: sk-...
 anthropic:
   api_key: sk-ant-...
-groq:
-  api_key: gsk_...
+ollama: {}  # no key needed
 ```
 
 Config in `~/.hermes/config.yaml`:
@@ -113,16 +121,34 @@ model:
   name: gpt-4o
 ```
 
+## Architecture
+
+```
+hermes/
+├── crates/
+│   ├── cli/           # Binary entry point
+│   ├── cli-core/      # CLI parsing, commands, auth, config
+│   ├── common/        # Shared types, model metadata, provider detection
+│   ├── runtime/       # Agent loop, LLM providers, tool system, display
+│   └── session-db/    # SQLite persistence (WAL mode)
+```
+
+## Build from Source
+
+```bash
+git clone https://github.com/yangyifei123/hermes-rust-win.git
+cd hermes-rust-win
+cargo build --release
+```
+
+Requires Rust 1.75+.
+
 ## Stats
 
-- **59 Rust source files**, **19K lines**
-- **408 tests**, **0 clippy warnings**
-- Supports **22+ LLM providers**
-
-## Requirements
-
-- Rust 1.75+ (stable toolchain, Windows x86_64 target)
-- SQLite 3 (bundled via rusqlite)
+- 63 Rust source files, 20K lines
+- 467 tests, 0 clippy warnings
+- 22+ LLM providers, 50+ model presets
+- ~5 MB release binary
 
 ## License
 
