@@ -334,6 +334,19 @@ pub enum Commands {
     #[command(subcommand)]
     Claw(ClawCommand),
 
+    // ── Models ────────────────────────────────────────────────────────────
+    Models {
+        /// Filter by provider name
+        #[arg(long)]
+        provider: Option<String>,
+        /// Show only models supporting tool use
+        #[arg(long)]
+        tools: bool,
+        /// Show pricing information
+        #[arg(long)]
+        pricing: bool,
+    },
+
     // ── Version ──────────────────────────────────────────────────────────
     Version,
 
@@ -1028,6 +1041,8 @@ pub async fn run() -> Result<()> {
         Commands::Acp => commands::handle_acp()?,
         Commands::Dashboard { port, host, no_open } => commands::handle_dashboard(*port, host.to_string(), *no_open)?,
         Commands::Claw(cmd) => commands::handle_claw(cmd.clone()),
+        Commands::Models { provider, tools, pricing } =>
+            commands::handle_models(provider.as_deref(), *tools, *pricing)?,
     }
     Ok(())
 }
@@ -1046,7 +1061,10 @@ fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyh
     let store = crate::skills_store::SkillStore::new()?;
     let agent = repl.agent_mut();
 
-    if args.is_empty() || args == "list" {
+    let parts: Vec<&str> = args.splitn(3, ' ').collect();
+    let cmd = parts.first().copied().unwrap_or("");
+
+    if args.is_empty() || cmd == "list" {
         let skills = store.list_skills()?;
         if skills.is_empty() {
             return Ok(Some("No skills available.".to_string()));
@@ -1058,13 +1076,26 @@ fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyh
             out.push_str(&format!("  {}{} — {}\n", s.name, cat_tag, s.description));
         }
         Ok(Some(out))
-    } else if args == "help" {
-        Ok(Some("Usage:\n  /skill list        — list available skills\n  /skill <name>      — load skill into system prompt\n  /skill off         — clear skill (reset system prompt)".to_string()))
-    } else if args == "off" {
+    } else if cmd == "help" {
+        Ok(Some("Usage:\n  /skill list              — list available skills\n  /skill <name>            — load skill into system prompt\n  /skill install <name> <content> — install a new skill\n  /skill uninstall <name>  — remove a skill\n  /skill off               — clear skill (reset system prompt)".to_string()))
+    } else if cmd == "off" {
         agent.set_system_prompt(String::new());
         Ok(Some("Skill unloaded. System prompt cleared.".to_string()))
+    } else if cmd == "install" {
+        let name = parts.get(1).ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
+        let content = parts.get(2).ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
+        store.install_skill(name, content)?;
+        Ok(Some(format!("Skill '{}' installed.", name)))
+    } else if cmd == "uninstall" {
+        let name = parts.get(1).ok_or_else(|| anyhow::anyhow!("usage: /skill uninstall <name>"))?;
+        let removed = store.uninstall_skill(name)?;
+        if removed {
+            Ok(Some(format!("Skill '{}' uninstalled.", name)))
+        } else {
+            Ok(Some(format!("Skill '{}' not found.", name)))
+        }
     } else {
-        let skill = store.load_skill(args)?;
+        let skill = store.load_skill(cmd)?;
         agent.set_system_prompt(skill.prompt.clone());
         Ok(Some(format!("Skill '{}' loaded. System prompt set ({} chars).", skill.name, skill.prompt.len())))
     }
@@ -1785,6 +1816,35 @@ mod tests {
     fn test_cli_parse_uninstall_full() {
         let cli = Cli::parse_from(vec!["hermes", "uninstall", "--full", "--yes"]);
         if let Commands::Uninstall { full, yes } = cli.command.unwrap() { assert!(full); assert!(yes); } else { panic!("expected Uninstall"); }
+    }
+
+    // === Models ===
+    #[test]
+    fn test_cli_parse_models() {
+        let cli = Cli::parse_from(vec!["hermes", "models"]);
+        if let Commands::Models { provider, tools, pricing } = cli.command.unwrap() {
+            assert!(provider.is_none());
+            assert!(!tools);
+            assert!(!pricing);
+        } else { panic!("expected Models"); }
+    }
+    #[test]
+    fn test_cli_parse_models_with_provider() {
+        let cli = Cli::parse_from(vec!["hermes", "models", "--provider", "openai"]);
+        if let Commands::Models { provider, tools, pricing } = cli.command.unwrap() {
+            assert_eq!(provider, Some("openai".to_string()));
+            assert!(!tools);
+            assert!(!pricing);
+        } else { panic!("expected Models"); }
+    }
+    #[test]
+    fn test_cli_parse_models_with_flags() {
+        let cli = Cli::parse_from(vec!["hermes", "models", "--tools", "--pricing"]);
+        if let Commands::Models { provider, tools, pricing } = cli.command.unwrap() {
+            assert!(provider.is_none());
+            assert!(tools);
+            assert!(pricing);
+        } else { panic!("expected Models"); }
     }
 
     // === Global flags ===

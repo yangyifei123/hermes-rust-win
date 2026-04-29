@@ -14,6 +14,13 @@ edition = "2021"
 rust-version = "1.75"
 authors = ["Nous Research"]
 license = "MIT"
+description = "Blazing-fast, Windows-first AI agent CLI with 22+ LLM providers"
+repository = "https://github.com/nousresearch/hermes-rust-win"
+homepage = "https://github.com/nousresearch/hermes-rust-win"
+documentation = "https://docs.rs/hermes-cli"
+keywords = ["ai", "llm", "cli", "agent", "openai"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 
 [workspace.dependencies]
 # Internal crates

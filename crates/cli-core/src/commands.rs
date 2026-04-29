@@ -117,6 +117,125 @@ pub fn handle_model(current: bool, global: bool, model: Option<&str>) -> Result<
     Ok(())
 }
 
+pub fn handle_models(provider: Option<&str>, tools_only: bool, show_pricing: bool) -> Result<()> {
+    use hermes_common::model_metadata;
+
+    let all = model_metadata::all_models();
+
+    // Filter by provider if specified
+    let models: Vec<_> = if let Some(p) = provider {
+        let parsed: hermes_common::Provider = p.parse().map_err(|e| anyhow::anyhow!("{}", e))?;
+        model_metadata::list_models_by_provider(&parsed)
+            .into_iter()
+            .collect()
+    } else {
+        all.iter().collect()
+    };
+
+    // Filter by tool support
+    let models: Vec<_> = if tools_only {
+        models.into_iter().filter(|m| m.supports_tools).collect()
+    } else {
+        models
+    };
+
+    if models.is_empty() {
+        println!("No models found matching the given filters.");
+        return Ok(());
+    }
+
+    // Compute column widths
+    let name_w = models.iter().map(|m| m.name.len()).max().unwrap_or(4).max(4);
+    let prov_w = models.iter().map(|m| m.provider.to_string().len()).max().unwrap_or(8).max(8);
+
+    // Header
+    if show_pricing {
+        println!(
+            "{:<name_w$}  {:<prov_w$}  {:>7}  {:>7}  {:>5}  {:>5}  {:>9}  {:>9}",
+            "Model", "Provider", "Context", "MaxOut", "Vis", "Tools", "$ In/1M", "$ Out/1M",
+            name_w = name_w,
+            prov_w = prov_w,
+        );
+    } else {
+        println!(
+            "{:<name_w$}  {:<prov_w$}  {:>7}  {:>7}  {:>5}  {:>5}",
+            "Model", "Provider", "Context", "MaxOut", "Vis", "Tools",
+            name_w = name_w,
+            prov_w = prov_w,
+        );
+    }
+
+    // Separator
+    let sep_len = if show_pricing {
+        name_w + 2 + prov_w + 2 + 7 + 2 + 7 + 2 + 5 + 2 + 5 + 2 + 9 + 2 + 9
+    } else {
+        name_w + 2 + prov_w + 2 + 7 + 2 + 7 + 2 + 5 + 2 + 5
+    };
+    println!("{}", "-".repeat(sep_len));
+
+    for m in &models {
+        let ctx = format_tokens(m.context_length);
+        let max_out = format_tokens(m.max_output_tokens);
+        let vis = if m.supports_vision { "yes" } else { "no" };
+        let tls = if m.supports_tools { "yes" } else { "no" };
+
+        if show_pricing {
+            let in_price = format_price(m.input_price_per_million);
+            let out_price = format_price(m.output_price_per_million);
+            println!(
+                "{:<name_w$}  {:<prov_w$}  {:>7}  {:>7}  {:>5}  {:>5}  {:>9}  {:>9}",
+                m.name,
+                m.provider,
+                ctx,
+                max_out,
+                vis,
+                tls,
+                in_price,
+                out_price,
+                name_w = name_w,
+                prov_w = prov_w,
+            );
+        } else {
+            println!(
+                "{:<name_w$}  {:<prov_w$}  {:>7}  {:>7}  {:>5}  {:>5}",
+                m.name,
+                m.provider,
+                ctx,
+                max_out,
+                vis,
+                tls,
+                name_w = name_w,
+                prov_w = prov_w,
+            );
+        }
+    }
+
+    println!();
+    println!("{} models shown.", models.len());
+
+    Ok(())
+}
+
+/// Format a token count with K/M suffix for readability.
+fn format_tokens(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{}K", n / 1_000)
+    } else {
+        format!("{}", n)
+    }
+}
+
+/// Format a price per million tokens.
+fn format_price(price: f64) -> String {
+    if price == 0.0 {
+        "free".to_string()
+    } else {
+        format!("${:.2}", price)
+    }
+}
+
 pub fn handle_tools(cmd: ToolsCommand) -> Result<()> {
     match cmd {
         ToolsCommand::List { all, .. } => {
