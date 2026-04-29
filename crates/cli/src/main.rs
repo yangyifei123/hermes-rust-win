@@ -30,6 +30,6 @@ fn main() {
 }
 
 async fn run() -> Result<()> {
-    hermes_cli_core::config::load_dotenv()?;
-    hermes_cli_core::run().await
+    hermes_agent_cli_core::config::load_dotenv()?;
+    hermes_agent_cli_core::run().await
 }

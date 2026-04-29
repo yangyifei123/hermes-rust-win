@@ -648,12 +648,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "hermes-cli"
+name = "hermes-agent-cli"
 version = "1.14.19"
 dependencies = [
  "anyhow",
  "assert_cmd",
- "hermes-cli-core",
+ "hermes-agent-cli-core",
  "predicates",
  "tokio",
  "tracing",
@@ -661,7 +661,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hermes-cli-core"
+name = "hermes-agent-cli-core"
 version = "1.14.19"
 dependencies = [
  "anyhow",
@@ -670,8 +670,8 @@ dependencies = [
  "clap_complete",
  "directories",
  "futures",
+ "hermes-agent-runtime",
  "hermes-common",
- "hermes-runtime",
  "hermes-session-db",
  "regex-lite",
  "serde",
@@ -687,22 +687,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hermes-common"
-version = "1.14.19"
-dependencies = [
- "anyhow",
- "chrono",
- "directories",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "hermes-runtime"
+name = "hermes-agent-runtime"
 version = "1.14.19"
 dependencies = [
  "chrono",
@@ -720,6 +705,21 @@ dependencies = [
  "urlencoding",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "hermes-common"
+version = "1.14.19"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

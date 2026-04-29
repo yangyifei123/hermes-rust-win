@@ -25,9 +25,9 @@ readme = "README.md"
 [workspace.dependencies]
 # Internal crates
 hermes-common = { version = "1.14.19", path = "crates/common" }
-hermes-cli-core = { version = "1.14.19", path = "crates/cli-core" }
+hermes-agent-cli-core = { version = "1.14.19", path = "crates/cli-core" }
 hermes-session-db = { version = "1.14.19", path = "crates/session-db" }
-hermes-runtime = { version = "1.14.19", path = "crates/runtime" }
+hermes-agent-runtime = { version = "1.14.19", path = "crates/runtime" }
 
 # CLI
 clap = { version = "4.5", features = ["derive", "cargo", "env", "unicode", "wrap_help"] }

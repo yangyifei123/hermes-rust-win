@@ -1,5 +1,5 @@
 [package]
-name = "hermes-cli-core"
+name = "hermes-agent-cli-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -26,7 +26,7 @@ tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 regex-lite = "0.1"
 uuid = { version = "1.0", features = ["v4"] }
-hermes-runtime = { workspace = true }
+hermes-agent-runtime = { workspace = true }
 hermes-session-db = { workspace = true }
 hermes-common = { workspace = true }
 clap_complete = "4"

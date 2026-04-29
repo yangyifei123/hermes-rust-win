@@ -1,5 +1,5 @@
 ﻿[package]
-name = "hermes-cli"
+name = "hermes-agent-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ name = "hermes"
 path = "src/main.rs"
 
 [dependencies]
-hermes-cli-core = { workspace = true }
+hermes-agent-cli-core = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

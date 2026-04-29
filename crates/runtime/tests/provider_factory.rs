@@ -2,7 +2,7 @@
 //! and that provider.name() / default_model() are accurate.
 
 use hermes_common::Provider;
-use hermes_runtime::provider::create_provider;
+use hermes_agent_runtime::provider::create_provider;
 
 #[test]
 fn test_provider_name_openai() {

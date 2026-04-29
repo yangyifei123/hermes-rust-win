@@ -1,8 +1,8 @@
 //! Integration tests for OpenAI-compatible provider against a mock HTTP server.
 
 use hermes_common::Provider;
-use hermes_runtime::provider::{create_provider, ChatMessage, ChatRequest};
-use hermes_runtime::RuntimeError;
+use hermes_agent_runtime::provider::{create_provider, ChatMessage, ChatRequest};
+use hermes_agent_runtime::RuntimeError;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

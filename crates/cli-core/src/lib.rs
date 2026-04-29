@@ -1132,7 +1132,7 @@ fn init_logging(verbose: bool, debug: bool) {
 /// Handle /skill commands using the SkillStore.
 fn handle_skill_command(
     args: &str,
-    repl: &mut hermes_runtime::ChatRepl,
+    repl: &mut hermes_agent_runtime::ChatRepl,
 ) -> anyhow::Result<Option<String>> {
     let store = crate::skills_store::SkillStore::new()?;
     let agent = repl.agent_mut();
@@ -1197,8 +1197,8 @@ async fn handle_chat(
     quiet: bool,
     _verbose: bool,
 ) -> anyhow::Result<()> {
-    use hermes_runtime::provider::create_provider;
-    use hermes_runtime::tool::{
+    use hermes_agent_runtime::provider::create_provider;
+    use hermes_agent_runtime::tool::{
         browser::BrowserTool,
         file::{FileReadTool, FileSearchTool, FileWriteTool},
         mcp::McpTool,
@@ -1206,7 +1206,7 @@ async fn handle_chat(
         web::WebSearchTool,
         ToolRegistry,
     };
-    use hermes_runtime::{Agent, AgentConfig, ChatRepl};
+    use hermes_agent_runtime::{Agent, AgentConfig, ChatRepl};
     use hermes_session_db::SessionStore;
 
     // Load user config (config.yaml)
@@ -1306,7 +1306,7 @@ async fn handle_chat(
     } else {
         // Interactive REPL mode
         if !quiet {
-            hermes_runtime::display::print_banner(env!("CARGO_PKG_VERSION"), &model, provider_str);
+            hermes_agent_runtime::display::print_banner(env!("CARGO_PKG_VERSION"), &model, provider_str);
         }
 
         let mut repl =
@@ -1379,7 +1379,7 @@ async fn handle_chat(
                             usage.input_tokens,
                             usage.output_tokens,
                         );
-                        hermes_runtime::display::print_turn_usage(
+                        hermes_agent_runtime::display::print_turn_usage(
                             usage.input_tokens,
                             usage.output_tokens,
                             cost,
@@ -1391,7 +1391,7 @@ async fn handle_chat(
                     let msg = e.to_string();
                     if msg.contains("REPL exited") {
                         if !quiet {
-                            hermes_runtime::display::print_session_summary(
+                            hermes_agent_runtime::display::print_session_summary(
                                 repl.agent().turns_used(),
                                 0,
                                 repl.agent().total_cost(),
