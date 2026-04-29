@@ -1,5 +1,5 @@
-use serde_json::Value;
 use crate::RuntimeError;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -27,7 +27,10 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>>;
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>>;
 }
 
 pub struct ToolRegistry {
@@ -53,16 +56,19 @@ impl ToolRegistry {
     }
 
     pub fn tool_definitions(&self) -> Vec<Value> {
-        self.tools.values().map(|t| {
-            serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": t.name(),
-                    "description": t.description(),
-                    "parameters": t.parameters_schema()
-                }
+        self.tools
+            .values()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name(),
+                        "description": t.description(),
+                        "parameters": t.parameters_schema()
+                    }
+                })
             })
-        }).collect()
+            .collect()
     }
 
     pub async fn dispatch(&self, name: &str, params: Value) -> Result<ToolOutput, RuntimeError> {
@@ -80,12 +86,14 @@ impl ToolRegistry {
 }
 
 impl Default for ToolRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-pub mod terminal;
-pub mod file;
-pub mod web;
-pub mod mcp;
 pub mod browser;
 pub mod coercion;
+pub mod file;
+pub mod mcp;
+pub mod terminal;
+pub mod web;

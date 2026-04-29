@@ -622,10 +622,7 @@ pub fn get_model_metadata(name: &str) -> Option<&'static ModelMetadata> {
     let lower = name.to_lowercase();
 
     // Exact match (case-insensitive)
-    if let Some(m) = MODEL_REGISTRY
-        .iter()
-        .find(|m| m.name.to_lowercase() == lower)
-    {
+    if let Some(m) = MODEL_REGISTRY.iter().find(|m| m.name.to_lowercase() == lower) {
         return Some(m);
     }
 
@@ -635,8 +632,7 @@ pub fn get_model_metadata(name: &str) -> Option<&'static ModelMetadata> {
     MODEL_REGISTRY.iter().find(|m| {
         let mn = m.name.to_lowercase();
         if mn.starts_with(&lower) {
-            mn.len() == lower.len()
-                || !mn.as_bytes()[lower.len()].is_ascii_alphanumeric()
+            mn.len() == lower.len() || !mn.as_bytes()[lower.len()].is_ascii_alphanumeric()
         } else {
             false
         }
@@ -650,10 +646,7 @@ pub fn all_models() -> &'static [ModelMetadata] {
 
 /// List all models for a given provider.
 pub fn list_models_by_provider(provider: &Provider) -> Vec<&'static ModelMetadata> {
-    MODEL_REGISTRY
-        .iter()
-        .filter(|m| &m.provider == provider)
-        .collect()
+    MODEL_REGISTRY.iter().filter(|m| &m.provider == provider).collect()
 }
 
 /// Estimate the cost in USD for a given model and token counts.
@@ -680,11 +673,7 @@ mod tests {
 
     #[test]
     fn test_registry_has_50_plus_models() {
-        assert!(
-            MODEL_REGISTRY.len() >= 50,
-            "Expected 50+ models, got {}",
-            MODEL_REGISTRY.len()
-        );
+        assert!(MODEL_REGISTRY.len() >= 50, "Expected 50+ models, got {}", MODEL_REGISTRY.len());
     }
 
     #[test]
@@ -694,8 +683,8 @@ mod tests {
         assert_eq!(m.provider, Provider::OpenAI);
         assert_eq!(m.context_length, 128_000);
 
-        let m = get_model_metadata("claude-sonnet-4-20250514")
-            .expect("claude-sonnet-4 should exist");
+        let m =
+            get_model_metadata("claude-sonnet-4-20250514").expect("claude-sonnet-4 should exist");
         assert_eq!(m.provider, Provider::Anthropic);
     }
 
@@ -721,13 +710,11 @@ mod tests {
     #[test]
     fn test_cost_estimation() {
         // gpt-4o: $2.50/1M input, $10/1M output
-        let cost = estimate_cost("gpt-4o", 1_000_000, 1_000_000)
-            .expect("cost");
+        let cost = estimate_cost("gpt-4o", 1_000_000, 1_000_000).expect("cost");
         assert!((cost - 12.50).abs() < 0.001);
 
         // Free model
-        let cost = estimate_cost("llama3", 1_000_000, 1_000_000)
-            .expect("cost");
+        let cost = estimate_cost("llama3", 1_000_000, 1_000_000).expect("cost");
         assert!((cost - 0.0).abs() < 0.001);
     }
 
@@ -758,8 +745,7 @@ mod tests {
         let m = get_model_metadata("openai/gpt-4o").expect("openrouter");
         assert_eq!(m.provider, Provider::OpenRouter);
 
-        let m = get_model_metadata("anthropic/claude-sonnet-4")
-            .expect("openrouter");
+        let m = get_model_metadata("anthropic/claude-sonnet-4").expect("openrouter");
         assert_eq!(m.provider, Provider::OpenRouter);
     }
 

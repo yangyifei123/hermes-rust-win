@@ -47,11 +47,14 @@ impl Tool for TerminalTool {
         })
     }
 
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            let command = params["command"]
-                .as_str()
-                .ok_or_else(|| RuntimeError::InvalidInput("missing 'command' parameter".to_string()))?;
+            let command = params["command"].as_str().ok_or_else(|| {
+                RuntimeError::InvalidInput("missing 'command' parameter".to_string())
+            })?;
 
             let timeout_secs = params["timeout"].as_u64().unwrap_or(120);
 
@@ -64,9 +67,7 @@ impl Tool for TerminalTool {
                     .output(),
             )
             .await
-            .map_err(|_| RuntimeError::TimeoutError {
-                duration_secs: timeout_secs,
-            })?
+            .map_err(|_| RuntimeError::TimeoutError { duration_secs: timeout_secs })?
             .map_err(|e| RuntimeError::ToolError {
                 name: "terminal".to_string(),
                 message: e.to_string(),
@@ -100,10 +101,7 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_echo() {
         let tool = TerminalTool::new();
-        let result = tool
-            .execute(json!({"command": "Write-Output HELLO_TOOL"}))
-            .await
-            .unwrap();
+        let result = tool.execute(json!({"command": "Write-Output HELLO_TOOL"})).await.unwrap();
         assert!(!result.is_error);
         assert!(result.content.contains("HELLO_TOOL"));
     }
@@ -111,9 +109,8 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_timeout() {
         let tool = TerminalTool::new();
-        let result = tool
-            .execute(json!({"command": "Start-Sleep -Seconds 30", "timeout": 2}))
-            .await;
+        let result =
+            tool.execute(json!({"command": "Start-Sleep -Seconds 30", "timeout": 2})).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             RuntimeError::TimeoutError { .. } => {}

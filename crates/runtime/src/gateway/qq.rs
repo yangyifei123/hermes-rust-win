@@ -27,25 +27,23 @@ impl QqAdapter {
 impl PlatformAdapter for QqAdapter {
     fn start(&mut self) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            Err(RuntimeError::AgentError {
-                message: "QQ adapter not yet implemented".to_string(),
-            })
+            Err(RuntimeError::AgentError { message: "QQ adapter not yet implemented".to_string() })
         })
     }
 
     fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            Err(RuntimeError::AgentError {
-                message: "QQ adapter not yet implemented".to_string(),
-            })
+            Err(RuntimeError::AgentError { message: "QQ adapter not yet implemented".to_string() })
         })
     }
 
-    fn send_message(&self, _chat_id: &str, _message: &str) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
+    fn send_message(
+        &self,
+        _chat_id: &str,
+        _message: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            Err(RuntimeError::AgentError {
-                message: "QQ adapter not yet implemented".to_string(),
-            })
+            Err(RuntimeError::AgentError { message: "QQ adapter not yet implemented".to_string() })
         })
     }
 

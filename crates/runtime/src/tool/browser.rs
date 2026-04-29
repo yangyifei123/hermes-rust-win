@@ -27,7 +27,10 @@ impl Tool for BrowserTool {
         })
     }
 
-    fn execute(&self, _params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        _params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
             Ok(ToolOutput::error(
                 "Browser automation not yet implemented. Use terminal tool with curl for HTTP requests.",

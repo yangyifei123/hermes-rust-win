@@ -304,12 +304,7 @@ impl Model {
     }
 
     pub fn with_provider(name: &str, provider: Provider) -> Self {
-        Self {
-            name: name.to_string(),
-            provider,
-            base_url: None,
-            context_length: None,
-        }
+        Self { name: name.to_string(), provider, base_url: None, context_length: None }
     }
 }
 
@@ -348,11 +343,7 @@ pub struct Credentials {
 
 impl Credentials {
     pub fn new(provider: &str, api_key: &str) -> Self {
-        Self {
-            provider: provider.to_string(),
-            api_key: api_key.to_string(),
-            base_url: None,
-        }
+        Self { provider: provider.to_string(), api_key: api_key.to_string(), base_url: None }
     }
 
     /// Mask the API key for display, showing only last 4 characters.
@@ -398,28 +389,16 @@ mod tests {
     #[test]
     fn test_provider_default_model() {
         assert_eq!(Provider::OpenAI.default_model(), "gpt-4o");
-        assert_eq!(
-            Provider::Anthropic.default_model(),
-            "claude-sonnet-4-20250514"
-        );
+        assert_eq!(Provider::Anthropic.default_model(), "claude-sonnet-4-20250514");
         assert_eq!(Provider::Gemini.default_model(), "gemini-2.5-pro");
         assert_eq!(Provider::Zai.default_model(), "glm-5");
     }
 
     #[test]
     fn test_provider_default_base_url() {
-        assert_eq!(
-            Provider::OpenAI.default_base_url(),
-            "https://api.openai.com/v1"
-        );
-        assert_eq!(
-            Provider::Anthropic.default_base_url(),
-            "https://api.anthropic.com/v1"
-        );
-        assert_eq!(
-            Provider::Ollama.default_base_url(),
-            "http://localhost:11434"
-        );
+        assert_eq!(Provider::OpenAI.default_base_url(), "https://api.openai.com/v1");
+        assert_eq!(Provider::Anthropic.default_base_url(), "https://api.anthropic.com/v1");
+        assert_eq!(Provider::Ollama.default_base_url(), "http://localhost:11434");
     }
 
     #[test]

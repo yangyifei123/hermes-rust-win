@@ -76,11 +76,8 @@ fn test_provider_name_minimax() {
 
 #[test]
 fn test_custom_base_url_preserves_name() {
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "key",
-        Some("https://custom.proxy.example.com/v1"),
-    );
+    let provider =
+        create_provider(&Provider::OpenAI, "key", Some("https://custom.proxy.example.com/v1"));
     assert_eq!(provider.name(), "openai");
     assert_eq!(provider.default_model(), "gpt-4o");
 }
@@ -105,11 +102,6 @@ fn test_all_openai_compatible_providers_share_endpoint_path() {
     for p in &openai_compatible {
         let provider = create_provider(p, "key", None);
         // All OpenAI-compatible providers use the same name() logic
-        assert_eq!(
-            provider.name(),
-            p.as_str(),
-            "name mismatch for {:?}",
-            p
-        );
+        assert_eq!(provider.name(), p.as_str(), "name mismatch for {:?}", p);
     }
 }

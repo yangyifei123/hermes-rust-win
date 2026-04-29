@@ -130,7 +130,11 @@ mod tests {
 
     #[test]
     fn test_azure_provider() {
-        let p = create_azure_provider("key".to_string(), Some("https://myresource.openai.azure.com/openai/deployments/gpt-4o"), None);
+        let p = create_azure_provider(
+            "key".to_string(),
+            Some("https://myresource.openai.azure.com/openai/deployments/gpt-4o"),
+            None,
+        );
         assert_eq!(p.name(), "azure");
         assert_eq!(p.default_model(), "gpt-4o");
     }

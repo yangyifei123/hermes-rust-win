@@ -3,9 +3,9 @@
 //! Gemini uses its own API format (not OpenAI-compatible). Auth is via query
 //! parameter `?key={api_key}`. Streaming uses SSE with `data:` lines.
 
-use crate::provider::retry::{RetryPolicy, with_retry};
+use crate::provider::retry::{with_retry, RetryPolicy};
 use crate::provider::{
-    ChatMessage, ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChunk, StreamChoice,
+    ChatMessage, ChatRequest, ChatResponse, DeltaMessage, LlmProvider, StreamChoice, StreamChunk,
     TokenUsage,
 };
 use crate::RuntimeError;
@@ -37,7 +37,9 @@ impl GeminiProvider {
 
 /// Convert internal [`ChatMessage`] list to Gemini `contents` array, returning
 /// the system instruction separately.
-fn convert_messages(messages: &[ChatMessage]) -> (Option<serde_json::Value>, Vec<serde_json::Value>) {
+fn convert_messages(
+    messages: &[ChatMessage],
+) -> (Option<serde_json::Value>, Vec<serde_json::Value>) {
     let mut system_instruction: Option<serde_json::Value> = None;
     let mut contents: Vec<serde_json::Value> = Vec::new();
 
@@ -76,12 +78,11 @@ fn convert_messages(messages: &[ChatMessage]) -> (Option<serde_json::Value>, Vec
 
 /// Parse a Gemini `generateContent` JSON response into our [`ChatResponse`].
 fn parse_gemini_response(raw: &serde_json::Value) -> Result<ChatResponse, RuntimeError> {
-    let candidate = raw["candidates"]
-        .as_array()
-        .and_then(|arr| arr.first())
-        .ok_or_else(|| RuntimeError::ProviderError {
+    let candidate = raw["candidates"].as_array().and_then(|arr| arr.first()).ok_or_else(|| {
+        RuntimeError::ProviderError {
             message: "Gemini response missing candidates array".to_string(),
-        })?;
+        }
+    })?;
 
     let text = candidate["content"]["parts"]
         .as_array()
@@ -103,11 +104,7 @@ fn parse_gemini_response(raw: &serde_json::Value) -> Result<ChatResponse, Runtim
         let input = u["promptTokenCount"].as_u64().unwrap_or(0) as u32;
         let output = u["candidatesTokenCount"].as_u64().unwrap_or(0) as u32;
         let total = u["totalTokenCount"].as_u64().unwrap_or(input as u64 + output as u64) as u32;
-        TokenUsage {
-            input_tokens: input,
-            output_tokens: output,
-            total_tokens: total,
-        }
+        TokenUsage { input_tokens: input, output_tokens: output, total_tokens: total }
     });
 
     Ok(ChatResponse {
@@ -155,10 +152,7 @@ fn parse_gemini_sse_data(data: &str) -> Option<Result<StreamChunk, RuntimeError>
         if let Some(reason) = finish_reason {
             return Some(Ok(StreamChunk {
                 choices: vec![StreamChoice {
-                    delta: DeltaMessage {
-                        content: None,
-                        tool_calls: None,
-                    },
+                    delta: DeltaMessage { content: None, tool_calls: None },
                     finish_reason: Some(reason),
                 }],
             }));
@@ -169,10 +163,7 @@ fn parse_gemini_sse_data(data: &str) -> Option<Result<StreamChunk, RuntimeError>
 
     Some(Ok(StreamChunk {
         choices: vec![StreamChoice {
-            delta: DeltaMessage {
-                content: Some(text),
-                tool_calls: None,
-            },
+            delta: DeltaMessage { content: Some(text), tool_calls: None },
             finish_reason: None,
         }],
     }))
@@ -185,9 +176,7 @@ struct GeminiSseParser {
 
 impl GeminiSseParser {
     fn new() -> Self {
-        Self {
-            buffer: String::new(),
-        }
+        Self { buffer: String::new() }
     }
 
     /// Process raw bytes, returning parsed `StreamChunk`s.
@@ -263,18 +252,14 @@ impl LlmProvider for GeminiProvider {
                         .json(&b)
                         .send()
                         .await
-                        .map_err(|e| RuntimeError::ProviderError {
-                            message: e.to_string(),
-                        })?;
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
                     let code = resp.status().as_u16();
                     if resp.status().is_success() {
                         let raw: serde_json::Value = resp
                             .json()
                             .await
-                            .map_err(|e| RuntimeError::ProviderError {
-                                message: e.to_string(),
-                            })?;
+                            .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
                         parse_gemini_response(&raw)
                     } else if code == 429 {
@@ -346,9 +331,7 @@ impl LlmProvider for GeminiProvider {
                         .json(&b)
                         .send()
                         .await
-                        .map_err(|e| RuntimeError::ProviderError {
-                            message: e.to_string(),
-                        })?;
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
                     let code = r.status().as_u16();
                     if r.status().is_success() {
@@ -440,10 +423,7 @@ mod tests {
 
         // System prompt extracted separately
         assert!(system_instruction.is_some());
-        assert_eq!(
-            system_instruction.unwrap()["parts"][0]["text"],
-            "You are helpful."
-        );
+        assert_eq!(system_instruction.unwrap()["parts"][0]["text"], "You are helpful.");
 
         // Three non-system messages
         assert_eq!(contents.len(), 3);
@@ -541,17 +521,15 @@ mod tests {
         let mut parser = GeminiSseParser::new();
 
         // Incomplete first chunk
-        let results1 = parser.process("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel");
+        let results1 =
+            parser.process("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel");
         assert!(results1.is_empty());
 
         // Complete the chunk
         let results2 = parser.process("lo\"}]}}]}\n\n");
         assert_eq!(results2.len(), 1);
         assert_eq!(
-            results2[0].as_ref().unwrap().choices[0]
-                .delta
-                .content
-                .as_deref(),
+            results2[0].as_ref().unwrap().choices[0].delta.content.as_deref(),
             Some("Hello")
         );
     }

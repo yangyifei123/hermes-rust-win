@@ -1,7 +1,8 @@
+use crate::provider::retry::{with_retry, RetryPolicy};
 use crate::provider::{
-    ChatRequest, ChatResponse, DeltaMessage, LlmProvider, ProviderConfig, StreamChunk, StreamChoice, ToolCallDelta,
+    ChatRequest, ChatResponse, DeltaMessage, LlmProvider, ProviderConfig, StreamChoice,
+    StreamChunk, ToolCallDelta,
 };
-use crate::provider::retry::{RetryPolicy, with_retry};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
 use futures::Stream;
@@ -33,12 +34,8 @@ impl OpenAiCompatibleProvider {
         model_override: Option<&str>,
         provider_name: &str,
     ) -> Self {
-        let base_url = base_url_override
-            .unwrap_or(&config.base_url)
-            .to_string();
-        let model = model_override
-            .unwrap_or(&config.default_model)
-            .to_string();
+        let base_url = base_url_override.unwrap_or(&config.base_url).to_string();
+        let model = model_override.unwrap_or(&config.default_model).to_string();
 
         Self {
             client: Client::new(),
@@ -88,10 +85,7 @@ impl OpenAiCompatibleProvider {
         let mut req = self
             .client
             .post(url)
-            .header(
-                &self.auth_header,
-                format!("{}{}", self.auth_prefix, self.api_key),
-            )
+            .header(&self.auth_header, format!("{}{}", self.auth_prefix, self.api_key))
             .header("Content-Type", "application/json")
             .json(body);
 
@@ -209,17 +203,13 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         .build_request(&url, &req)
                         .send()
                         .await
-                        .map_err(|e| RuntimeError::ProviderError {
-                            message: e.to_string(),
-                        })?;
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
                     let status = resp.status();
                     if status.is_success() {
                         resp.json::<ChatResponse>()
                             .await
-                            .map_err(|e| RuntimeError::ProviderError {
-                                message: e.to_string(),
-                            })
+                            .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })
                     } else {
                         let code = status.as_u16();
                         let body = resp.text().await.unwrap_or_default();
@@ -269,9 +259,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         .build_request(&url, &req)
                         .send()
                         .await
-                        .map_err(|e| RuntimeError::ProviderError {
-                            message: e.to_string(),
-                        })?;
+                        .map_err(|e| RuntimeError::ProviderError { message: e.to_string() })?;
 
                     let code = r.status().as_u16();
                     if r.status().is_success() {
@@ -281,7 +269,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     } else {
                         let body = r.text().await.unwrap_or_default();
                         Err(RuntimeError::ProviderError {
-                            message: format!("{} streaming API error {code}: {body}", self.provider_name),
+                            message: format!(
+                                "{} streaming API error {code}: {body}",
+                                self.provider_name
+                            ),
                         })
                     }
                 }
@@ -366,10 +357,7 @@ mod tests {
         let line = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
         let result = parse_sse_line(line).unwrap().unwrap();
         assert_eq!(result.choices.len(), 1);
-        assert_eq!(
-            result.choices[0].delta.content.as_deref(),
-            Some("Hello")
-        );
+        assert_eq!(result.choices[0].delta.content.as_deref(), Some("Hello"));
     }
 
     #[test]
@@ -437,13 +425,8 @@ mod tests {
     #[test]
     fn test_from_config_with_registry() {
         let cfg = crate::provider::ProviderRegistry::config(&hermes_common::Provider::DeepSeek);
-        let provider = OpenAiCompatibleProvider::from_config(
-            &cfg,
-            "key".to_string(),
-            None,
-            None,
-            "deepseek",
-        );
+        let provider =
+            OpenAiCompatibleProvider::from_config(&cfg, "key".to_string(), None, None, "deepseek");
         assert_eq!(provider.name(), "deepseek");
         assert_eq!(provider.default_model(), "deepseek-chat");
         assert_eq!(provider.base_url(), "https://api.deepseek.com/v1");

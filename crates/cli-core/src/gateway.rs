@@ -244,9 +244,7 @@ const SERVICE_DISPLAY_NAME: &str = "Hermes Agent Gateway";
 pub fn is_service_installed() -> bool {
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("sc")
-            .args(["query", SERVICE_NAME])
-            .output();
+        let output = std::process::Command::new("sc").args(["query", SERVICE_NAME]).output();
         match output {
             Ok(out) => {
                 let stdout = String::from_utf8_lossy(&out.stdout);
@@ -267,9 +265,7 @@ pub fn is_service_installed() -> bool {
 pub fn get_service_status() -> ServiceStatus {
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("sc")
-            .args(["query", SERVICE_NAME])
-            .output();
+        let output = std::process::Command::new("sc").args(["query", SERVICE_NAME]).output();
 
         match output {
             Ok(out) => {
@@ -340,9 +336,7 @@ pub fn install_service() -> Result<()> {
 
         // Configure service description
         let desc = "Hermes Agent Gateway - Messaging platform integration service";
-        let _ = std::process::Command::new("sc")
-            .args(["description", SERVICE_NAME, desc])
-            .output();
+        let _ = std::process::Command::new("sc").args(["description", SERVICE_NAME, desc]).output();
 
         info!("installed Hermes gateway service");
         Ok(())
@@ -533,10 +527,7 @@ mod tests {
         assert_eq!(format!("{}", ServiceStatus::Running), "running");
         assert_eq!(format!("{}", ServiceStatus::Stopped), "stopped");
         assert_eq!(format!("{}", ServiceStatus::NotFound), "not_found");
-        assert_eq!(
-            format!("{}", ServiceStatus::NotApplicable),
-            "not_applicable"
-        );
+        assert_eq!(format!("{}", ServiceStatus::NotApplicable), "not_applicable");
     }
 
     #[test]

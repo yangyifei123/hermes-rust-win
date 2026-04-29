@@ -14,11 +14,8 @@ fn validate_path(requested: &str) -> Result<PathBuf, RuntimeError> {
         message: format!("Cannot get CWD: {}", e),
     })?;
 
-    let full_path = if requested_path.is_absolute() {
-        requested_path
-    } else {
-        cwd.join(&requested_path)
-    };
+    let full_path =
+        if requested_path.is_absolute() { requested_path } else { cwd.join(&requested_path) };
 
     let canonical_cwd = cwd.canonicalize().map_err(|e| RuntimeError::ToolError {
         name: "file".to_string(),
@@ -58,8 +55,12 @@ fn validate_path(requested: &str) -> Result<PathBuf, RuntimeError> {
 pub struct FileReadTool;
 
 impl Tool for FileReadTool {
-    fn name(&self) -> &str { "file_read" }
-    fn description(&self) -> &str { "Read file content from the local filesystem" }
+    fn name(&self) -> &str {
+        "file_read"
+    }
+    fn description(&self) -> &str {
+        "Read file content from the local filesystem"
+    }
 
     fn parameters_schema(&self) -> Value {
         json!({
@@ -73,17 +74,22 @@ impl Tool for FileReadTool {
         })
     }
 
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            let raw = params["path"].as_str()
+            let raw = params["path"]
+                .as_str()
                 .ok_or_else(|| RuntimeError::InvalidInput("missing 'path'".to_string()))?;
             let validated = validate_path(raw)?;
             let display = validated.display().to_string();
-            let content = tokio::fs::read_to_string(&validated).await
-                .map_err(|e| RuntimeError::ToolError {
+            let content = tokio::fs::read_to_string(&validated).await.map_err(|e| {
+                RuntimeError::ToolError {
                     name: "file_read".to_string(),
                     message: format!("Failed to read '{}': {}", display, e),
-                })?;
+                }
+            })?;
 
             let lines: Vec<&str> = content.lines().collect();
             let offset = params["offset"].as_u64().unwrap_or(0) as usize;
@@ -104,8 +110,12 @@ impl Tool for FileReadTool {
 pub struct FileWriteTool;
 
 impl Tool for FileWriteTool {
-    fn name(&self) -> &str { "file_write" }
-    fn description(&self) -> &str { "Write content to a file on the local filesystem" }
+    fn name(&self) -> &str {
+        "file_write"
+    }
+    fn description(&self) -> &str {
+        "Write content to a file on the local filesystem"
+    }
 
     fn parameters_schema(&self) -> Value {
         json!({
@@ -118,28 +128,31 @@ impl Tool for FileWriteTool {
         })
     }
 
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            let raw = params["path"].as_str()
+            let raw = params["path"]
+                .as_str()
                 .ok_or_else(|| RuntimeError::InvalidInput("missing 'path'".to_string()))?;
-            let content = params["content"].as_str()
+            let content = params["content"]
+                .as_str()
                 .ok_or_else(|| RuntimeError::InvalidInput("missing 'content'".to_string()))?;
             let validated = validate_path(raw)?;
             let display = validated.display().to_string();
 
             if let Some(parent) = validated.parent() {
-                tokio::fs::create_dir_all(parent).await
-                    .map_err(|e| RuntimeError::ToolError {
-                        name: "file_write".to_string(),
-                        message: format!("Failed to create dir: {}", e),
-                    })?;
+                tokio::fs::create_dir_all(parent).await.map_err(|e| RuntimeError::ToolError {
+                    name: "file_write".to_string(),
+                    message: format!("Failed to create dir: {}", e),
+                })?;
             }
 
-            tokio::fs::write(&validated, content).await
-                .map_err(|e| RuntimeError::ToolError {
-                    name: "file_write".to_string(),
-                    message: format!("Failed to write '{}': {}", display, e),
-                })?;
+            tokio::fs::write(&validated, content).await.map_err(|e| RuntimeError::ToolError {
+                name: "file_write".to_string(),
+                message: format!("Failed to write '{}': {}", display, e),
+            })?;
 
             Ok(ToolOutput::success(format!("Written {} bytes to {}", content.len(), display)))
         })
@@ -151,8 +164,12 @@ impl Tool for FileWriteTool {
 pub struct FileSearchTool;
 
 impl Tool for FileSearchTool {
-    fn name(&self) -> &str { "file_search" }
-    fn description(&self) -> &str { "Search file content using a regex pattern" }
+    fn name(&self) -> &str {
+        "file_search"
+    }
+    fn description(&self) -> &str {
+        "Search file content using a regex pattern"
+    }
 
     fn parameters_schema(&self) -> Value {
         json!({
@@ -165,34 +182,43 @@ impl Tool for FileSearchTool {
         })
     }
 
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
-            let raw = params["path"].as_str()
+            let raw = params["path"]
+                .as_str()
                 .ok_or_else(|| RuntimeError::InvalidInput("missing 'path'".to_string()))?;
-            let pattern = params["pattern"].as_str()
+            let pattern = params["pattern"]
+                .as_str()
                 .ok_or_else(|| RuntimeError::InvalidInput("missing 'pattern'".to_string()))?;
             let validated = validate_path(raw)?;
             let display = validated.display().to_string();
 
-            let content = tokio::fs::read_to_string(&validated).await
-                .map_err(|e| RuntimeError::ToolError {
+            let content = tokio::fs::read_to_string(&validated).await.map_err(|e| {
+                RuntimeError::ToolError {
                     name: "file_search".to_string(),
                     message: format!("Failed to read '{}': {}", display, e),
-                })?;
+                }
+            })?;
 
-            let re = Regex::new(pattern).map_err(|e| RuntimeError::InvalidInput(
-                format!("Invalid regex '{}': {}", pattern, e)
-            ))?;
+            let re = Regex::new(pattern).map_err(|e| {
+                RuntimeError::InvalidInput(format!("Invalid regex '{}': {}", pattern, e))
+            })?;
 
-            let matches: Vec<String> = content.lines()
+            let matches: Vec<String> = content
+                .lines()
                 .enumerate()
                 .filter(|(_, line)| re.is_match(line))
                 .map(|(i, line)| format!("{}: {}", i + 1, line))
                 .collect();
 
-            Ok(ToolOutput::success(
-                if matches.is_empty() { "No matches found".to_string() } else { matches.join("\n") }
-            ))
+            Ok(ToolOutput::success(if matches.is_empty() {
+                "No matches found".to_string()
+            } else {
+                matches.join("\n")
+            }))
         })
     }
 }
@@ -226,7 +252,8 @@ mod tests {
     #[tokio::test]
     async fn test_file_search() {
         let path = make_temp_file("test2.txt", "needle in haystack\nno match\nanother needle");
-        let result = FileSearchTool.execute(json!({"path": path, "pattern": "needle"})).await.unwrap();
+        let result =
+            FileSearchTool.execute(json!({"path": path, "pattern": "needle"})).await.unwrap();
         assert!(result.content.contains("needle"));
         cleanup_temp();
     }

@@ -17,11 +17,7 @@ pub struct RetryPolicy {
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self {
-            max_retries: 3,
-            base_delay_ms: 500,
-            max_delay_ms: 30_000,
-        }
+        Self { max_retries: 3, base_delay_ms: 500, max_delay_ms: 30_000 }
     }
 }
 
@@ -104,9 +100,7 @@ where
                 let is_retryable = match &err {
                     RuntimeError::RateLimitError { .. } => true,
                     RuntimeError::ProviderError { .. } => {
-                        extract_status(&err)
-                            .map(RetryPolicy::is_retryable_status)
-                            .unwrap_or(false)
+                        extract_status(&err).map(RetryPolicy::is_retryable_status).unwrap_or(false)
                     }
                     _ => false,
                 };
@@ -146,9 +140,7 @@ where
 
     Err(RuntimeError::RetryExhausted {
         attempts: policy.max_retries,
-        last_error: last_error
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| "unknown".to_string()),
+        last_error: last_error.map(|e| e.to_string()).unwrap_or_else(|| "unknown".to_string()),
     })
 }
 
@@ -198,10 +190,13 @@ mod tests {
 
     #[test]
     fn test_extract_status_from_provider_error() {
-        let err = RuntimeError::ProviderError { message: "API error 429: rate limited".to_string() };
+        let err =
+            RuntimeError::ProviderError { message: "API error 429: rate limited".to_string() };
         assert_eq!(extract_status(&err), Some(429));
 
-        let err2 = RuntimeError::ProviderError { message: "API error 500: internal server error".to_string() };
+        let err2 = RuntimeError::ProviderError {
+            message: "API error 500: internal server error".to_string(),
+        };
         assert_eq!(extract_status(&err2), Some(500));
 
         let err3 = RuntimeError::ProviderError { message: "connection refused".to_string() };
@@ -241,12 +236,15 @@ mod tests {
             async move {
                 let n = c.fetch_add(1, Ordering::Relaxed);
                 if n < 2 {
-                    Err(RuntimeError::ProviderError { message: "API error 503: unavailable".to_string() })
+                    Err(RuntimeError::ProviderError {
+                        message: "API error 503: unavailable".to_string(),
+                    })
                 } else {
                     Ok("success")
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert_eq!(result.unwrap(), "success");
         assert_eq!(counter.load(Ordering::Relaxed), 3);
@@ -266,7 +264,8 @@ mod tests {
                     message: "API error 500: server error".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         assert!(matches!(result, Err(RuntimeError::RetryExhausted { attempts: 2, .. })));
         // Called max_retries+1 times (initial + retries)
@@ -290,7 +289,8 @@ mod tests {
                     Ok("ok")
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert_eq!(result.unwrap(), "ok");
     }
@@ -309,7 +309,8 @@ mod tests {
                     message: "API error 400: bad request".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_err());
         // Should NOT retry — only called once

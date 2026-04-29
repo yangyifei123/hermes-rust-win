@@ -57,8 +57,7 @@ impl SkillsIndex {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create skills directory {:?}", parent))?;
         }
-        let content = serde_yaml::to_string(self)
-            .context("failed to serialize skills index")?;
+        let content = serde_yaml::to_string(self).context("failed to serialize skills index")?;
         fs::write(&path, content)
             .with_context(|| format!("failed to write skills index to {:?}", path))?;
         Ok(())
@@ -75,7 +74,9 @@ impl SkillsIndex {
             return PathBuf::from(home).join("skills");
         }
         if let Ok(profile) = std::env::var("HERMES_PROFILE") {
-            if let Some(proj_dirs) = ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile)) {
+            if let Some(proj_dirs) =
+                ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile))
+            {
                 return proj_dirs.data_dir().join("skills");
             }
         }
@@ -190,10 +191,7 @@ pub fn scan_bundled_skills(bundled_path: &PathBuf) -> Result<Vec<Skill>> {
                 if skill_md.exists() {
                     if let Ok(content) = fs::read_to_string(&skill_md) {
                         if let Some(metadata) = parse_skill_frontmatter(&content) {
-                            skills.push(Skill {
-                                metadata,
-                                path: path.clone(),
-                            });
+                            skills.push(Skill { metadata, path: path.clone() });
                         }
                     }
                 }
@@ -204,7 +202,7 @@ pub fn scan_bundled_skills(bundled_path: &PathBuf) -> Result<Vec<Skill>> {
     Ok(skills)
 }
 
-    #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -42,7 +42,11 @@ impl PlatformAdapter for WechatAdapter {
         })
     }
 
-    fn send_message(&self, _chat_id: &str, _message: &str) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
+    fn send_message(
+        &self,
+        _chat_id: &str,
+        _message: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         Box::pin(async move {
             Err(RuntimeError::AgentError {
                 message: "WeChat adapter not yet implemented".to_string(),

@@ -47,31 +47,24 @@ pub struct QueryRequirements {
 ///
 /// Returns the model name string (e.g. `"gpt-4o"`, `"claude-sonnet-4-20250514"`),
 /// or `None` when no model satisfies every requirement.
-pub fn select_model(
-    requirements: &QueryRequirements,
-    strategy: RoutingStrategy,
-) -> Option<String> {
-    let candidates: Vec<&ModelMetadata> = all_models()
-        .iter()
-        .filter(|m| matches_requirements(m, requirements))
-        .collect();
+pub fn select_model(requirements: &QueryRequirements, strategy: RoutingStrategy) -> Option<String> {
+    let candidates: Vec<&ModelMetadata> =
+        all_models().iter().filter(|m| matches_requirements(m, requirements)).collect();
 
     if candidates.is_empty() {
         return None;
     }
 
     let best = match strategy {
-        RoutingStrategy::Cheapest => candidates
-            .into_iter()
-            .min_by(|a, b| total_price(a).total_cmp(&total_price(b)))?,
-        RoutingStrategy::MostCapable => candidates
-            .into_iter()
-            .max_by(|a, b| a.context_length.cmp(&b.context_length))?,
-        RoutingStrategy::Balanced => candidates
-            .into_iter()
-            .max_by(|a, b| {
-                balance_score(a).total_cmp(&balance_score(b))
-            })?,
+        RoutingStrategy::Cheapest => {
+            candidates.into_iter().min_by(|a, b| total_price(a).total_cmp(&total_price(b)))?
+        }
+        RoutingStrategy::MostCapable => {
+            candidates.into_iter().max_by(|a, b| a.context_length.cmp(&b.context_length))?
+        }
+        RoutingStrategy::Balanced => {
+            candidates.into_iter().max_by(|a, b| balance_score(a).total_cmp(&balance_score(b)))?
+        }
     };
 
     Some(best.name.to_string())
@@ -134,11 +127,7 @@ mod tests {
 
     #[test]
     fn test_select_cheapest_model_with_tools() {
-        let req = QueryRequirements {
-            tools: true,
-            streaming: true,
-            ..Default::default()
-        };
+        let req = QueryRequirements { tools: true, streaming: true, ..Default::default() };
         let model = select_model(&req, RoutingStrategy::Cheapest).expect("should find a model");
         // The cheapest tool-capable, streaming-capable model should be one of
         // the free Ollama models or a very cheap provider model.
@@ -163,10 +152,7 @@ mod tests {
 
     #[test]
     fn test_select_most_capable() {
-        let req = QueryRequirements {
-            streaming: true,
-            ..Default::default()
-        };
+        let req = QueryRequirements { streaming: true, ..Default::default() };
         let model = select_model(&req, RoutingStrategy::MostCapable).expect("should find a model");
         let meta = crate::model_metadata::get_model_metadata(&model).unwrap();
         // gemini-1.5-pro has the largest context at 2_097_152
@@ -177,11 +163,7 @@ mod tests {
     fn test_no_model_with_vision_if_not_needed() {
         // Request vision=false, tools=true — should never return a model
         // that lacks tools, but vision flag is not a filter here.
-        let req = QueryRequirements {
-            vision: false,
-            tools: true,
-            ..Default::default()
-        };
+        let req = QueryRequirements { vision: false, tools: true, ..Default::default() };
         let model = select_model(&req, RoutingStrategy::Cheapest).expect("should find a model");
         let meta = crate::model_metadata::get_model_metadata(&model).unwrap();
         // Must support tools; vision flag was false so we don't require it,
@@ -192,10 +174,7 @@ mod tests {
     #[test]
     fn test_vision_filter() {
         // Require vision — every returned model must support it.
-        let req = QueryRequirements {
-            vision: true,
-            ..Default::default()
-        };
+        let req = QueryRequirements { vision: true, ..Default::default() };
         let model = select_model(&req, RoutingStrategy::Cheapest).expect("should find a model");
         let meta = crate::model_metadata::get_model_metadata(&model).unwrap();
         assert!(meta.supports_vision);
@@ -204,10 +183,7 @@ mod tests {
     #[test]
     fn test_cost_budget_filter() {
         // Budget so low only free models qualify.
-        let req = QueryRequirements {
-            max_cost_per_million: Some(0.01),
-            ..Default::default()
-        };
+        let req = QueryRequirements { max_cost_per_million: Some(0.01), ..Default::default() };
         let model = select_model(&req, RoutingStrategy::Cheapest);
         // There should be free models that qualify.
         assert!(model.is_some(), "should find a free model");
@@ -229,10 +205,7 @@ mod tests {
 
     #[test]
     fn test_min_context_length() {
-        let req = QueryRequirements {
-            min_context_length: Some(500_000),
-            ..Default::default()
-        };
+        let req = QueryRequirements { min_context_length: Some(500_000), ..Default::default() };
         let model = select_model(&req, RoutingStrategy::Cheapest).expect("should find a model");
         let meta = crate::model_metadata::get_model_metadata(&model).unwrap();
         assert!(meta.context_length >= 500_000);
@@ -252,13 +225,8 @@ mod tests {
 
     #[test]
     fn test_balanced_strategy() {
-        let req = QueryRequirements {
-            tools: true,
-            streaming: true,
-            ..Default::default()
-        };
-        let model =
-            select_model(&req, RoutingStrategy::Balanced).expect("should find a model");
+        let req = QueryRequirements { tools: true, streaming: true, ..Default::default() };
+        let model = select_model(&req, RoutingStrategy::Balanced).expect("should find a model");
         let meta = crate::model_metadata::get_model_metadata(&model).unwrap();
         assert!(meta.supports_tools);
         assert!(meta.supports_streaming);

@@ -122,10 +122,7 @@ impl CronJob {
             base_url: None,
             schedule,
             schedule_display: display,
-            repeat: RepeatConfig {
-                max_times: None,
-                completed: 0,
-            },
+            repeat: RepeatConfig { max_times: None, completed: 0 },
             enabled: true,
             state: "scheduled".to_string(),
             paused_at: None,
@@ -149,10 +146,7 @@ struct JobsStorage {
 
 impl Default for JobsStorage {
     fn default() -> Self {
-        Self {
-            jobs: vec![],
-            updated_at: Utc::now().to_rfc3339(),
-        }
+        Self { jobs: vec![], updated_at: Utc::now().to_rfc3339() }
     }
 }
 
@@ -174,10 +168,7 @@ pub fn parse_duration(s: &str) -> Result<u32> {
         return Ok(value * multiplier);
     }
 
-    anyhow::bail!(
-        "Invalid duration format: '{}'. Use format like '30m', '2h', '1d'",
-        s
-    );
+    anyhow::bail!("Invalid duration format: '{}'. Use format like '30m', '2h', '1d'", s);
 }
 
 /// Parse schedule string
@@ -253,9 +244,7 @@ pub fn compute_next_run(schedule: &Schedule, last_run_at: Option<&str>) -> Optio
         ScheduleKind::Interval => {
             let minutes = schedule.minutes.unwrap_or(30);
             let base = if let Some(last) = last_run_at {
-                DateTime::parse_from_rfc3339(last)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&Utc))
+                DateTime::parse_from_rfc3339(last).ok().map(|dt| dt.with_timezone(&Utc))
             } else {
                 Some(Utc::now())
             };
@@ -301,10 +290,7 @@ pub fn save_jobs(jobs: &[CronJob]) -> Result<()> {
     ensure_dirs()?;
     let path = cron_jobs_path();
 
-    let storage = JobsStorage {
-        jobs: jobs.to_vec(),
-        updated_at: Utc::now().to_rfc3339(),
-    };
+    let storage = JobsStorage { jobs: jobs.to_vec(), updated_at: Utc::now().to_rfc3339() };
 
     let content =
         serde_json::to_string_pretty(&storage).context("failed to serialize cron jobs")?;
@@ -423,10 +409,7 @@ pub fn get_due_jobs() -> Vec<CronJob> {
 /// Simple UUID generator
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     format!("{:x}", now)[..12].to_string()
 }
 

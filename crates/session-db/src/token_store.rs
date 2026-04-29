@@ -53,9 +53,7 @@ impl TokenStore {
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
 
         let result = stmt
-            .query_row([session_id], |row| {
-                Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
-            })
+            .query_row([session_id], |row| Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?)))
             .optional()
             .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
 

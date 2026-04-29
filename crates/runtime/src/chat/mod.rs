@@ -54,8 +54,7 @@ impl ChatRepl {
     /// Handles both text deltas and streaming tool calls.
     async fn run_turn_streaming(&mut self, input: &str) -> Result<AgentResponse, RuntimeError> {
         // Append user message first
-        self.agent
-            .append_message(&self.session_id, MessageRole::User, input)?;
+        self.agent.append_message(&self.session_id, MessageRole::User, input)?;
 
         // Show typing indicator
         print!("Assistant: ");
@@ -97,8 +96,7 @@ impl ChatRepl {
 
         // Persist the full assistant response to session
         if !full_content.is_empty() {
-            self.agent
-                .append_assistant_message(&self.session_id, &full_content)?;
+            self.agent.append_assistant_message(&self.session_id, &full_content)?;
         }
 
         Ok(AgentResponse {
@@ -327,7 +325,9 @@ impl ChatRepl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, LlmProvider, StreamChunk};
+    use crate::provider::{
+        ChatChoice, ChatMessage, ChatRequest, ChatResponse, LlmProvider, StreamChunk,
+    };
     use crate::tool::ToolRegistry;
     use crate::{AgentConfig, RuntimeError};
     use futures::Stream;
@@ -343,15 +343,15 @@ mod tests {
 
     impl MockProvider {
         fn new(response: &str) -> Self {
-            Self {
-                response: response.to_string(),
-                call_count: AtomicU32::new(0),
-            }
+            Self { response: response.to_string(), call_count: AtomicU32::new(0) }
         }
     }
 
     impl LlmProvider for MockProvider {
-        fn chat_completion(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
+        fn chat_completion(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
             let content = self.response.clone();
             Box::pin(async move {
                 Ok(ChatResponse {
@@ -364,12 +364,29 @@ mod tests {
             })
         }
 
-        fn chat_completion_stream(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
+        fn chat_completion_stream(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = Result<
+                            Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>,
+                            RuntimeError,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > {
             Box::pin(async { Err(RuntimeError::ProviderError { message: "no stream".into() }) })
         }
 
-        fn name(&self) -> &str { "mock" }
-        fn default_model(&self) -> &str { "mock" }
+        fn name(&self) -> &str {
+            "mock"
+        }
+        fn default_model(&self) -> &str {
+            "mock"
+        }
     }
 
     fn make_agent() -> Agent {

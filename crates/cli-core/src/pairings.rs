@@ -130,14 +130,9 @@ impl PairingStore {
     /// Revoke a pairing
     pub fn revoke_pairing(&mut self, platform: &str, user_id: &str) -> Result<()> {
         let len = self.pairings.len();
-        self.pairings
-            .retain(|p| !(p.platform == platform && p.user_id == user_id));
+        self.pairings.retain(|p| !(p.platform == platform && p.user_id == user_id));
         if self.pairings.len() == len {
-            anyhow::bail!(
-                "Pairing for platform '{}' and user '{}' not found",
-                platform,
-                user_id
-            );
+            anyhow::bail!("Pairing for platform '{}' and user '{}' not found", platform, user_id);
         }
         Ok(())
     }
@@ -159,10 +154,7 @@ impl PairingStore {
 
     /// List pairings by status
     pub fn list_by_status(&self, status: &PairingStatus) -> Vec<&Pairing> {
-        self.pairings
-            .iter()
-            .filter(|p| &p.status == status)
-            .collect()
+        self.pairings.iter().filter(|p| &p.status == status).collect()
     }
 }
 

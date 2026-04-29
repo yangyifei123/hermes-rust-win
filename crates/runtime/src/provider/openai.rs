@@ -8,14 +8,7 @@ pub struct OpenAiProvider(OpenAiCompatibleProvider);
 
 impl OpenAiProvider {
     pub fn new(api_key: String, base_url: Option<&str>, model: Option<&str>) -> Self {
-        Self(OpenAiCompatibleProvider::new(
-            api_key,
-            base_url,
-            model,
-            "openai",
-            None,
-            None,
-        ))
+        Self(OpenAiCompatibleProvider::new(api_key, base_url, model, "openai", None, None))
     }
 
     /// Expose the internal `base_url` for tests that check it directly.

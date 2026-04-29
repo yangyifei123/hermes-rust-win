@@ -46,25 +46,24 @@ impl Tool for WebSearchTool {
         })
     }
 
-    fn execute(&self, params: Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+    fn execute(
+        &self,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
         let client = self.client.clone();
         Box::pin(async move {
-            let query = params.get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let query = params.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
             if query.is_empty() {
                 return Ok(ToolOutput::error("query is required"));
             }
 
-            let max_results = params.get("max_results")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(5)
-                .min(10) as usize;
+            let max_results =
+                params.get("max_results").and_then(|v| v.as_u64()).unwrap_or(5).min(10) as usize;
 
             // Use DuckDuckGo HTML search
-            let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding::encode(&query));
+            let url =
+                format!("https://html.duckduckgo.com/html/?q={}", urlencoding::encode(&query));
 
             let response = client.get(&url).send().await;
             match response {
@@ -78,11 +77,25 @@ impl Tool for WebSearchTool {
                             is_error: false,
                         })
                     } else {
-                        let formatted: Vec<String> = results.iter().enumerate().map(|(i, r)| {
-                            format!("{}. {}\n   URL: {}\n   {}", i + 1, r.title, r.url, r.snippet)
-                        }).collect();
+                        let formatted: Vec<String> = results
+                            .iter()
+                            .enumerate()
+                            .map(|(i, r)| {
+                                format!(
+                                    "{}. {}\n   URL: {}\n   {}",
+                                    i + 1,
+                                    r.title,
+                                    r.url,
+                                    r.snippet
+                                )
+                            })
+                            .collect();
                         Ok(ToolOutput {
-                            content: format!("Search results for '{}':\n\n{}", query, formatted.join("\n\n")),
+                            content: format!(
+                                "Search results for '{}':\n\n{}",
+                                query,
+                                formatted.join("\n\n")
+                            ),
                             is_error: false,
                         })
                     }
@@ -122,7 +135,8 @@ fn parse_ddg_results(html: &str, max: usize) -> Vec<SearchResult> {
         // Find snippet: class="result__snippet"
         let snippet_search = title_start + 100;
         let snippet = if snippet_search < html.len() {
-            html[snippet_search..].find("class=\"result__snippet\"")
+            html[snippet_search..]
+                .find("class=\"result__snippet\"")
                 .and_then(|pos| extract_text_after(html, snippet_search + pos))
                 .unwrap_or_default()
         } else {
@@ -181,11 +195,19 @@ mod tests {
     #[tokio::test]
     async fn test_web_search_executes() {
         let tool = WebSearchTool::new();
-        let result = tool.execute(json!({"query": "rust programming language", "max_results": 2})).await.unwrap();
+        let result = tool
+            .execute(json!({"query": "rust programming language", "max_results": 2}))
+            .await
+            .unwrap();
         // Web search may fail due to rate limits/network - just check it doesn't crash
         // If successful, should have results; if failed, should have error message
-        assert!(result.content.contains("Search results") || result.content.contains("No results") || result.is_error,
-            "Got unexpected output: {}", result.content);
+        assert!(
+            result.content.contains("Search results")
+                || result.content.contains("No results")
+                || result.is_error,
+            "Got unexpected output: {}",
+            result.content
+        );
     }
 
     #[tokio::test]

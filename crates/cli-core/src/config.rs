@@ -29,11 +29,7 @@ pub struct ModelConfig {
 
 impl Default for ModelConfig {
     fn default() -> Self {
-        Self {
-            default: default_model(),
-            base_url: String::new(),
-            provider: String::new(),
-        }
+        Self { default: default_model(), base_url: String::new(), provider: String::new() }
     }
 }
 
@@ -61,11 +57,7 @@ fn default_timeout() -> u64 {
 
 impl Default for TerminalConfig {
     fn default() -> Self {
-        Self {
-            env_type: default_env_type(),
-            cwd: String::new(),
-            timeout: default_timeout(),
-        }
+        Self { env_type: default_env_type(), cwd: String::new(), timeout: default_timeout() }
     }
 }
 

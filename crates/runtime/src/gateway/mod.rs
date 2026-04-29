@@ -22,12 +22,16 @@ pub enum Platform {
 pub trait PlatformAdapter: Send + Sync {
     fn start(&mut self) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>>;
     fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>>;
-    fn send_message(&self, chat_id: &str, message: &str) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>>;
+    fn send_message(
+        &self,
+        chat_id: &str,
+        message: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>>;
     fn name(&self) -> &str;
 }
 
-pub mod wechat;
 pub mod qq;
+pub mod wechat;
 
 /// Returns the number of UTF-16 code units in a string.
 /// Used for Telegram/WeChat message length limits which count UTF-16 code units.

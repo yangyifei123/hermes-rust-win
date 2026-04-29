@@ -97,10 +97,8 @@ pub fn truncate_messages(messages: Vec<ChatMessage>, max_tokens: usize) -> Vec<C
         (None, messages)
     };
 
-    let system_tokens = system
-        .as_ref()
-        .map(|s| estimate_tokens(s.text()) + MESSAGE_OVERHEAD_TOKENS)
-        .unwrap_or(0);
+    let system_tokens =
+        system.as_ref().map(|s| estimate_tokens(s.text()) + MESSAGE_OVERHEAD_TOKENS).unwrap_or(0);
 
     let budget = max_tokens.saturating_sub(system_tokens);
 
@@ -163,11 +161,7 @@ mod tests {
     fn test_estimate_long_text() {
         let text = "a ".repeat(1000);
         let tokens = estimate_tokens(&text);
-        assert!(
-            tokens >= 500,
-            "expected at least 500 tokens, got {}",
-            tokens
-        );
+        assert!(tokens >= 500, "expected at least 500 tokens, got {}", tokens);
     }
 
     #[test]
@@ -193,10 +187,7 @@ mod tests {
 
     #[test]
     fn test_estimate_messages_basic() {
-        let messages = vec![
-            ChatMessage::user("hello"),
-            ChatMessage::assistant("hi there"),
-        ];
+        let messages = vec![ChatMessage::user("hello"), ChatMessage::assistant("hi there")];
         let tokens = estimate_messages_tokens(&messages);
         assert!(tokens > 0);
     }
@@ -217,15 +208,10 @@ mod tests {
         for i in 0..50 {
             messages.push(msg(
                 "user",
-                &format!(
-                    "Message number {} with some padding text to increase token count.",
-                    i
-                ),
+                &format!("Message number {} with some padding text to increase token count.", i),
             ));
-            messages.push(msg(
-                "assistant",
-                &format!("Response number {} with some padding text.", i),
-            ));
+            messages
+                .push(msg("assistant", &format!("Response number {} with some padding text.", i)));
         }
         let truncated = truncate_messages(messages, 200);
         assert_eq!(truncated[0].role, "system");
@@ -243,10 +229,7 @@ mod tests {
         }
         let truncated = truncate_messages(messages.clone(), 100);
         assert!(truncated.len() < 20);
-        assert_eq!(
-            truncated.last().unwrap().text(),
-            messages.last().unwrap().text()
-        );
+        assert_eq!(truncated.last().unwrap().text(), messages.last().unwrap().text());
     }
 
     #[test]
@@ -265,9 +248,8 @@ mod tests {
 
     #[test]
     fn test_truncate_respects_min_keep() {
-        let messages: Vec<ChatMessage> = (0..10)
-            .map(|i| msg("user", &format!("msg {}", i)))
-            .collect();
+        let messages: Vec<ChatMessage> =
+            (0..10).map(|i| msg("user", &format!("msg {}", i))).collect();
         let truncated = truncate_messages(messages, 10);
         assert!(truncated.len() >= MIN_KEEP_MESSAGES);
     }

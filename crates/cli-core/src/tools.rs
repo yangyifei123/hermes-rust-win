@@ -114,8 +114,7 @@ impl ToolsConfig {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create tools config directory {:?}", parent))?;
         }
-        let content = serde_yaml::to_string(self)
-            .context("failed to serialize tools config")?;
+        let content = serde_yaml::to_string(self).context("failed to serialize tools config")?;
         fs::write(&path, content)
             .with_context(|| format!("failed to write tools config to {:?}", path))?;
         Ok(())
@@ -127,7 +126,9 @@ impl ToolsConfig {
             return PathBuf::from(home).join("tools.yaml");
         }
         if let Ok(profile) = std::env::var("HERMES_PROFILE") {
-            if let Some(proj_dirs) = ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile)) {
+            if let Some(proj_dirs) =
+                ProjectDirs::from("ai", "hermes", &format!("hermes-{}", profile))
+            {
                 return proj_dirs.config_dir().join("tools.yaml");
             }
         }
@@ -158,8 +159,8 @@ impl ToolsConfig {
 
 /// List all tools with their status
 pub fn list_tools(all: bool) -> Result<Vec<(String, String, String, bool)>> {
-    let config = ToolsConfig::load()
-        .map_err(|e| anyhow::anyhow!("failed to load tools config: {}", e))?;
+    let config =
+        ToolsConfig::load().map_err(|e| anyhow::anyhow!("failed to load tools config: {}", e))?;
     let tools = get_builtin_tools();
 
     Ok(tools

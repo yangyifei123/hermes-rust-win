@@ -162,8 +162,7 @@ impl SkillStore {
 
         let md_path = self.skills_dir.join(format!("{}.md", name));
         if md_path.exists() {
-            fs::remove_file(&md_path)
-                .with_context(|| format!("failed to delete {:?}", md_path))?;
+            fs::remove_file(&md_path).with_context(|| format!("failed to delete {:?}", md_path))?;
             return Ok(true);
         }
 
@@ -198,12 +197,7 @@ impl SkillStore {
             category = None;
         }
 
-        Ok(Skill {
-            name: name.to_string(),
-            description,
-            prompt: body.trim().to_string(),
-            category,
-        })
+        Ok(Skill { name: name.to_string(), description, prompt: body.trim().to_string(), category })
     }
 
     /// Parse a YAML skill file.
@@ -323,10 +317,9 @@ mod tests {
     fn test_install_and_load_skill() {
         let (store, _dir) = temp_store();
 
-        let content = "---\ndescription: Test skill\ncategory: test\n---\nYou are a test assistant.";
-        store
-            .install_skill("my-test", content)
-            .expect("install");
+        let content =
+            "---\ndescription: Test skill\ncategory: test\n---\nYou are a test assistant.";
+        store.install_skill("my-test", content).expect("install");
 
         let skill = store.load_skill("my-test").expect("load");
         assert_eq!(skill.name, "my-test");
@@ -352,9 +345,7 @@ mod tests {
     fn test_list_skills_returns_disk_skills_when_present() {
         let (store, _dir) = temp_store();
 
-        store
-            .install_skill("custom", "---\ndescription: Custom\n---\nDo stuff.")
-            .expect("install");
+        store.install_skill("custom", "---\ndescription: Custom\n---\nDo stuff.").expect("install");
 
         let skills = store.list_skills().expect("list");
         // On-disk skills should replace built-ins entirely.

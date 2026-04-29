@@ -823,14 +823,8 @@ pub enum WebhookCommand {
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum PairingCommand {
     List,
-    Approve {
-        platform: String,
-        code: String,
-    },
-    Revoke {
-        platform: String,
-        user_id: String,
-    },
+    Approve { platform: String, code: String },
+    Revoke { platform: String, user_id: String },
     ClearPending,
 }
 
@@ -919,7 +913,10 @@ fn ensure_disk_space(threshold_gb: f64) -> f64 {
         };
 
         if free_gb < threshold_gb {
-            info!("C drive low: {:.2}GB free (threshold: {:.2}GB), auto-cleaning...", free_gb, threshold_gb);
+            info!(
+                "C drive low: {:.2}GB free (threshold: {:.2}GB), auto-cleaning...",
+                free_gb, threshold_gb
+            );
 
             // Clean cargo target on E: drive
             let target_dir = std::env::current_dir().unwrap_or_default().join("target");
@@ -953,7 +950,10 @@ fn ensure_disk_space(threshold_gb: f64) -> f64 {
             info!("After cleanup: {:.2}GB free", free_gb_after);
 
             if free_gb_after < threshold_gb / 2.0 {
-                eprintln!("⚠ WARNING: C drive critically low ({:.2}GB free). Consider manual cleanup.", free_gb_after);
+                eprintln!(
+                    "⚠ WARNING: C drive critically low ({:.2}GB free). Consider manual cleanup.",
+                    free_gb_after
+                );
             }
 
             free_gb_after
@@ -1000,56 +1000,129 @@ pub async fn run() -> Result<()> {
     });
 
     match &command {
-        Commands::Chat { model, query, system, provider, max_turns, yolo, quiet, chat_verbose, .. } => {
-            handle_chat(model.clone(), query.clone(), system.clone(), provider.clone(), *max_turns, *yolo, *quiet, *chat_verbose).await?;
+        Commands::Chat {
+            model,
+            query,
+            system,
+            provider,
+            max_turns,
+            yolo,
+            quiet,
+            chat_verbose,
+            ..
+        } => {
+            handle_chat(
+                model.clone(),
+                query.clone(),
+                system.clone(),
+                provider.clone(),
+                *max_turns,
+                *yolo,
+                *quiet,
+                *chat_verbose,
+            )
+            .await?;
         }
         Commands::Auth(ref cmd) => commands::handle_auth(cmd.clone()).await?,
-        Commands::Model { current, global, model, portal_url: _, inference_url: _, client_id: _, scope: _, no_browser: _, timeout: _, ca_bundle: _, insecure: _ } =>
-            commands::handle_model(*current, *global, model.as_deref())?,
+        Commands::Model {
+            current,
+            global,
+            model,
+            portal_url: _,
+            inference_url: _,
+            client_id: _,
+            scope: _,
+            no_browser: _,
+            timeout: _,
+            ca_bundle: _,
+            insecure: _,
+        } => commands::handle_model(*current, *global, model.as_deref())?,
         Commands::Tools(ref cmd) => commands::handle_tools(cmd.clone())?,
         Commands::Skills(ref cmd) => commands::handle_skills(cmd.clone())?,
         Commands::Gateway(ref cmd) => commands::handle_gateway(cmd.clone()).await?,
         Commands::Cron(ref cmd) => commands::handle_cron(cmd.clone()).await?,
         Commands::Config(ref cmd) => commands::handle_config(cmd.clone())?,
-        Commands::Setup { section: _, skip_auth, skip_model, non_interactive: _, reset: _ } =>
-            commands::handle_setup(*skip_auth, *skip_model)?,
+        Commands::Setup { section: _, skip_auth, skip_model, non_interactive: _, reset: _ } => {
+            commands::handle_setup(*skip_auth, *skip_model)?
+        }
         Commands::Doctor { all, check, fix: _ } => commands::handle_doctor(*all, check.as_deref())?,
         Commands::Status { all: _, deep: _ } => commands::handle_status()?,
-        Commands::Version => { println!("hermes {}", env!("CARGO_PKG_VERSION")); }
+        Commands::Version => {
+            println!("hermes {}", env!("CARGO_PKG_VERSION"));
+        }
         Commands::Update { gateway: _ } => commands::handle_update()?,
         Commands::Uninstall { full: _, yes: _ } => commands::handle_uninstall()?,
         // Stub handlers for new commands
         Commands::Sessions(cmd) => commands::handle_sessions(cmd.clone()),
-        Commands::Logs { log_name, lines, follow, level, session, since, component } =>
-            commands::handle_logs(log_name.as_deref(), *lines, *follow, level.as_deref(), session.as_deref(), since.as_deref(), component.as_deref())?,
+        Commands::Logs { log_name, lines, follow, level, session, since, component } => {
+            commands::handle_logs(
+                log_name.as_deref(),
+                *lines,
+                *follow,
+                level.as_deref(),
+                session.as_deref(),
+                since.as_deref(),
+                component.as_deref(),
+            )?
+        }
         Commands::Profile(cmd) => commands::handle_profile(cmd.clone()),
         Commands::Mcp(cmd) => commands::handle_mcp(cmd.clone()),
         Commands::Memory(cmd) => commands::handle_memory(cmd.clone())?,
         Commands::Webhook(cmd) => commands::handle_webhook(cmd.clone()),
         Commands::Pairing(cmd) => commands::handle_pairing(cmd.clone()),
         Commands::Plugins(cmd) => commands::handle_plugins(cmd.clone()),
-        Commands::Backup { output, quick, label } => commands::handle_backup(output.clone(), *quick, label.clone())?,
+        Commands::Backup { output, quick, label } => {
+            commands::handle_backup(output.clone(), *quick, label.clone())?
+        }
         Commands::Import { zipfile, force } => commands::handle_import(zipfile.clone(), *force)?,
         Commands::Debug(cmd) => commands::handle_debug(cmd.clone()),
         Commands::Dump { show_keys } => commands::handle_dump(*show_keys)?,
         Commands::Completion { shell } => commands::handle_completion(shell.as_deref()),
         Commands::Insights { days, source } => commands::handle_insights(*days, source.as_deref())?,
-        Commands::Login { provider, portal_url, inference_url, client_id, scope, no_browser, timeout, ca_bundle, insecure } =>
-            commands::handle_login(provider.as_deref(), portal_url.as_deref(), inference_url.as_deref(), client_id.as_deref(), scope.as_deref(), *no_browser, *timeout, ca_bundle.as_deref(), *insecure)?,
+        Commands::Login {
+            provider,
+            portal_url,
+            inference_url,
+            client_id,
+            scope,
+            no_browser,
+            timeout,
+            ca_bundle,
+            insecure,
+        } => commands::handle_login(
+            provider.as_deref(),
+            portal_url.as_deref(),
+            inference_url.as_deref(),
+            client_id.as_deref(),
+            scope.as_deref(),
+            *no_browser,
+            *timeout,
+            ca_bundle.as_deref(),
+            *insecure,
+        )?,
         Commands::Logout { provider } => commands::handle_logout(provider.as_deref())?,
         Commands::Whatsapp => commands::handle_whatsapp()?,
         Commands::Acp => commands::handle_acp()?,
-        Commands::Dashboard { port, host, no_open } => commands::handle_dashboard(*port, host.to_string(), *no_open)?,
+        Commands::Dashboard { port, host, no_open } => {
+            commands::handle_dashboard(*port, host.to_string(), *no_open)?
+        }
         Commands::Claw(cmd) => commands::handle_claw(cmd.clone()),
-        Commands::Models { provider, tools, pricing } =>
-            commands::handle_models(provider.as_deref(), *tools, *pricing)?,
+        Commands::Models { provider, tools, pricing } => {
+            commands::handle_models(provider.as_deref(), *tools, *pricing)?
+        }
     }
     Ok(())
 }
 
 fn init_logging(verbose: bool, debug: bool) {
     use tracing_subscriber::EnvFilter;
-    let level = if debug { tracing::Level::DEBUG } else if verbose { tracing::Level::INFO } else { tracing::Level::WARN };
+    let level = if debug {
+        tracing::Level::DEBUG
+    } else if verbose {
+        tracing::Level::INFO
+    } else {
+        tracing::Level::WARN
+    };
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(level.into()))
         .with_target(false)
@@ -1057,7 +1130,10 @@ fn init_logging(verbose: bool, debug: bool) {
 }
 
 /// Handle /skill commands using the SkillStore.
-fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyhow::Result<Option<String>> {
+fn handle_skill_command(
+    args: &str,
+    repl: &mut hermes_runtime::ChatRepl,
+) -> anyhow::Result<Option<String>> {
     let store = crate::skills_store::SkillStore::new()?;
     let agent = repl.agent_mut();
 
@@ -1082,8 +1158,12 @@ fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyh
         agent.set_system_prompt(String::new());
         Ok(Some("Skill unloaded. System prompt cleared.".to_string()))
     } else if cmd == "install" {
-        let name = parts.get(1).ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
-        let content = parts.get(2).ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
+        let name = parts
+            .get(1)
+            .ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
+        let content = parts
+            .get(2)
+            .ok_or_else(|| anyhow::anyhow!("usage: /skill install <name> <content>"))?;
         store.install_skill(name, content)?;
         Ok(Some(format!("Skill '{}' installed.", name)))
     } else if cmd == "uninstall" {
@@ -1097,7 +1177,11 @@ fn handle_skill_command(args: &str, repl: &mut hermes_runtime::ChatRepl) -> anyh
     } else {
         let skill = store.load_skill(cmd)?;
         agent.set_system_prompt(skill.prompt.clone());
-        Ok(Some(format!("Skill '{}' loaded. System prompt set ({} chars).", skill.name, skill.prompt.len())))
+        Ok(Some(format!(
+            "Skill '{}' loaded. System prompt set ({} chars).",
+            skill.name,
+            skill.prompt.len()
+        )))
     }
 }
 
@@ -1113,25 +1197,40 @@ async fn handle_chat(
     quiet: bool,
     _verbose: bool,
 ) -> anyhow::Result<()> {
-    use hermes_runtime::{Agent, AgentConfig, ChatRepl};
     use hermes_runtime::provider::create_provider;
-    use hermes_runtime::tool::{ToolRegistry, terminal::TerminalTool, file::{FileReadTool, FileWriteTool, FileSearchTool}, web::WebSearchTool, mcp::McpTool, browser::BrowserTool};
+    use hermes_runtime::tool::{
+        browser::BrowserTool,
+        file::{FileReadTool, FileSearchTool, FileWriteTool},
+        mcp::McpTool,
+        terminal::TerminalTool,
+        web::WebSearchTool,
+        ToolRegistry,
+    };
+    use hermes_runtime::{Agent, AgentConfig, ChatRepl};
     use hermes_session_db::SessionStore;
 
     // Load user config (config.yaml)
     let user_config = crate::config::Config::load().unwrap_or_default();
 
     // Resolve provider: CLI flag > config > default
-    let provider_str = provider.as_deref()
-        .or_else(|| if user_config.model.provider.is_empty() { None } else { Some(&user_config.model.provider) })
+    let provider_str = provider
+        .as_deref()
+        .or_else(|| {
+            if user_config.model.provider.is_empty() {
+                None
+            } else {
+                Some(&user_config.model.provider)
+            }
+        })
         .unwrap_or("openai");
-    let provider_type = provider_str.parse::<hermes_common::Provider>()
-        .unwrap_or(hermes_common::Provider::OpenAI);
+    let provider_type =
+        provider_str.parse::<hermes_common::Provider>().unwrap_or(hermes_common::Provider::OpenAI);
 
     // Resolve API key: credential pool (round-robin) > env var
     let auth_store = crate::auth::AuthStore::load().unwrap_or_default();
     let cred_pool = crate::credential_pool::CredentialPool::from_auth_store(&auth_store);
-    let api_key = cred_pool.get(provider_str)
+    let api_key = cred_pool
+        .get(provider_str)
         .map(|c| c.api_key)
         .or_else(|| std::env::var(format!("{}_API_KEY", provider_str.to_uppercase())).ok())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
@@ -1141,21 +1240,30 @@ async fn handle_chat(
         _ => {
             anyhow::bail!(
                 "No API key configured for '{}'. Run: hermes auth add {} --api-key <KEY>",
-                provider_str, provider_str
+                provider_str,
+                provider_str
             );
         }
     };
 
     // Resolve base_url: pool entry > config > provider default
-    let base_url_owned = auth_store.get(provider_str)
-        .and_then(|c| c.base_url.clone())
-        .or_else(|| if user_config.model.base_url.is_empty() { None } else { Some(user_config.model.base_url.clone()) });
+    let base_url_owned =
+        auth_store.get(provider_str).and_then(|c| c.base_url.clone()).or_else(|| {
+            if user_config.model.base_url.is_empty() {
+                None
+            } else {
+                Some(user_config.model.base_url.clone())
+            }
+        });
     let base_url = base_url_owned.as_deref();
 
     // Resolve model: CLI flag > config > provider default
     let model = model.unwrap_or_else(|| {
-        if !user_config.model.default.is_empty() { user_config.model.default.clone() }
-        else { create_provider(&provider_type, &api_key, base_url).default_model().to_string() }
+        if !user_config.model.default.is_empty() {
+            user_config.model.default.clone()
+        } else {
+            create_provider(&provider_type, &api_key, base_url).default_model().to_string()
+        }
     });
 
     let provider_box = create_provider(&provider_type, &api_key, base_url);
@@ -1191,7 +1299,8 @@ async fn handle_chat(
 
     if let Some(q) = query {
         // Single-shot mode
-        let response = ChatRepl::run_query(agent, &q).await
+        let response = ChatRepl::run_query(agent, &q)
+            .await
             .map_err(|e| anyhow::anyhow!("Query failed: {}", e))?;
         println!("{}", response);
     } else {
@@ -1200,8 +1309,8 @@ async fn handle_chat(
             hermes_runtime::display::print_banner(env!("CARGO_PKG_VERSION"), &model, provider_str);
         }
 
-        let mut repl = ChatRepl::new(agent)
-            .map_err(|e| anyhow::anyhow!("Failed to create REPL: {}", e))?;
+        let mut repl =
+            ChatRepl::new(agent).map_err(|e| anyhow::anyhow!("Failed to create REPL: {}", e))?;
 
         // Async REPL loop with Ctrl+C handling
         use std::io::Write;
@@ -1265,8 +1374,17 @@ async fn handle_chat(
                     println!("{}", response.content);
                     // Show per-turn usage if available
                     if let Some(ref usage) = response.token_usage {
-                        let cost = hermes_common::model_metadata::estimate_cost(&model, usage.input_tokens, usage.output_tokens);
-                        hermes_runtime::display::print_turn_usage(usage.input_tokens, usage.output_tokens, cost, &model);
+                        let cost = hermes_common::model_metadata::estimate_cost(
+                            &model,
+                            usage.input_tokens,
+                            usage.output_tokens,
+                        );
+                        hermes_runtime::display::print_turn_usage(
+                            usage.input_tokens,
+                            usage.output_tokens,
+                            cost,
+                            &model,
+                        );
                     }
                 }
                 Err(e) => {
@@ -1305,7 +1423,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "chat", "gpt-4"]);
         if let Commands::Chat { model, .. } = cli.command.unwrap() {
             assert_eq!(model, Some("gpt-4".to_string()));
-        } else { panic!("expected Chat"); }
+        } else {
+            panic!("expected Chat");
+        }
     }
 
     #[test]
@@ -1314,7 +1434,9 @@ mod tests {
         if let Commands::Chat { model, system, .. } = cli.command.unwrap() {
             assert_eq!(model, Some("gpt-4".to_string()));
             assert_eq!(system, Some("You are helpful".to_string()));
-        } else { panic!("expected Chat"); }
+        } else {
+            panic!("expected Chat");
+        }
     }
 
     #[test]
@@ -1322,7 +1444,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "chat", "-q", "hello world"]);
         if let Commands::Chat { query, .. } = cli.command.unwrap() {
             assert_eq!(query, Some("hello world".to_string()));
-        } else { panic!("expected Chat"); }
+        } else {
+            panic!("expected Chat");
+        }
     }
 
     #[test]
@@ -1330,7 +1454,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "chat", "--provider", "anthropic"]);
         if let Commands::Chat { provider, .. } = cli.command.unwrap() {
             assert_eq!(provider, Some("anthropic".to_string()));
-        } else { panic!("expected Chat"); }
+        } else {
+            panic!("expected Chat");
+        }
     }
 
     #[test]
@@ -1338,7 +1464,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "chat", "--toolsets", "web,memory"]);
         if let Commands::Chat { toolsets, .. } = cli.command.unwrap() {
             assert_eq!(toolsets, Some("web,memory".to_string()));
-        } else { panic!("expected Chat"); }
+        } else {
+            panic!("expected Chat");
+        }
     }
 
     #[test]
@@ -1346,26 +1474,44 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "chat", "--yolo"]);
         if let Commands::Chat { yolo, .. } = cli.command.unwrap() {
             assert!(yolo);
-        } else { panic!("expected Chat"); }
-}
+        } else {
+            panic!("expected Chat");
+        }
+    }
 
     #[test]
     fn test_cli_parse_auth_add() {
-        let cli = Cli::parse_from(vec!["hermes", "auth", "add", "openai", "--api-key", "sk-test123"]);
+        let cli =
+            Cli::parse_from(vec!["hermes", "auth", "add", "openai", "--api-key", "sk-test123"]);
         if let Commands::Auth(AuthCommand::Add { provider, api_key, .. }) = cli.command.unwrap() {
             assert_eq!(provider, "openai");
             assert_eq!(api_key, Some("sk-test123".to_string()));
-        } else { panic!("expected Auth::Add"); }
+        } else {
+            panic!("expected Auth::Add");
+        }
     }
 
     #[test]
     fn test_cli_parse_auth_add_with_base_url() {
-        let cli = Cli::parse_from(vec!["hermes", "auth", "add", "custom", "--api-key", "key123", "--base-url", "https://api.example.com"]);
-        if let Commands::Auth(AuthCommand::Add { provider, api_key, base_url, .. }) = cli.command.unwrap() {
+        let cli = Cli::parse_from(vec![
+            "hermes",
+            "auth",
+            "add",
+            "custom",
+            "--api-key",
+            "key123",
+            "--base-url",
+            "https://api.example.com",
+        ]);
+        if let Commands::Auth(AuthCommand::Add { provider, api_key, base_url, .. }) =
+            cli.command.unwrap()
+        {
             assert_eq!(provider, "custom");
             assert_eq!(api_key, Some("key123".to_string()));
             assert_eq!(base_url, Some("https://api.example.com".to_string()));
-        } else { panic!("expected Auth::Add"); }
+        } else {
+            panic!("expected Auth::Add");
+        }
     }
 
     #[test]
@@ -1374,7 +1520,9 @@ mod tests {
         if let Commands::Auth(AuthCommand::Add { provider, auth_type, .. }) = cli.command.unwrap() {
             assert_eq!(provider, "nous");
             assert_eq!(auth_type, Some("oauth".to_string()));
-        } else { panic!("expected Auth::Add"); }
+        } else {
+            panic!("expected Auth::Add");
+        }
     }
 
     #[test]
@@ -1382,7 +1530,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "auth", "list"]);
         if let Commands::Auth(AuthCommand::List { provider }) = cli.command.unwrap() {
             assert!(provider.is_none());
-        } else { panic!("expected Auth::List"); }
+        } else {
+            panic!("expected Auth::List");
+        }
     }
 
     #[test]
@@ -1390,7 +1540,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "auth", "list", "openai"]);
         if let Commands::Auth(AuthCommand::List { provider }) = cli.command.unwrap() {
             assert_eq!(provider, Some("openai".to_string()));
-        } else { panic!("expected Auth::List"); }
+        } else {
+            panic!("expected Auth::List");
+        }
     }
 
     #[test]
@@ -1398,13 +1550,18 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "auth", "remove", "openai"]);
         if let Commands::Auth(AuthCommand::Remove { provider, .. }) = cli.command.unwrap() {
             assert_eq!(provider, "openai");
-        } else { panic!("expected Auth::Remove"); }
+        } else {
+            panic!("expected Auth::Remove");
+        }
     }
 
     #[test]
     fn test_cli_parse_auth_reset() {
         let cli = Cli::parse_from(vec!["hermes", "auth", "reset"]);
-        assert!(matches!(cli.command.unwrap(), Commands::Auth(AuthCommand::Reset { provider: None })));
+        assert!(matches!(
+            cli.command.unwrap(),
+            Commands::Auth(AuthCommand::Reset { provider: None })
+        ));
     }
 
     // === Model ===
@@ -1415,7 +1572,9 @@ mod tests {
             assert!(current);
             assert!(!global);
             assert_eq!(model, None);
-        } else { panic!("expected Model"); }
+        } else {
+            panic!("expected Model");
+        }
     }
 
     #[test]
@@ -1425,7 +1584,9 @@ mod tests {
             assert!(!current);
             assert!(global);
             assert_eq!(model, Some("claude-3".to_string()));
-        } else { panic!("expected Model"); }
+        } else {
+            panic!("expected Model");
+        }
     }
 
     #[test]
@@ -1435,7 +1596,9 @@ mod tests {
             assert!(!current);
             assert!(!global);
             assert_eq!(model, Some("gpt-4o".to_string()));
-        } else { panic!("expected Model"); }
+        } else {
+            panic!("expected Model");
+        }
     }
 
     // === Tools ===
@@ -1445,16 +1608,21 @@ mod tests {
         if let Commands::Tools(ToolsCommand::List { all, platform }) = cli.command.unwrap() {
             assert!(!all);
             assert_eq!(platform, "cli");
-        } else { panic!("expected Tools::List"); }
+        } else {
+            panic!("expected Tools::List");
+        }
     }
 
     #[test]
     fn test_cli_parse_tools_list_all() {
-        let cli = Cli::parse_from(vec!["hermes", "tools", "list", "--all", "--platform", "telegram"]);
+        let cli =
+            Cli::parse_from(vec!["hermes", "tools", "list", "--all", "--platform", "telegram"]);
         if let Commands::Tools(ToolsCommand::List { all, platform }) = cli.command.unwrap() {
             assert!(all);
             assert_eq!(platform, "telegram");
-        } else { panic!("expected Tools::List"); }
+        } else {
+            panic!("expected Tools::List");
+        }
     }
 
     #[test]
@@ -1463,27 +1631,42 @@ mod tests {
         if let Commands::Tools(ToolsCommand::Disable { names, platform }) = cli.command.unwrap() {
             assert_eq!(names, vec!["web_search", "memory"]);
             assert_eq!(platform, "cli");
-        } else { panic!("expected Tools::Disable"); }
+        } else {
+            panic!("expected Tools::Disable");
+        }
     }
 
     #[test]
     fn test_cli_parse_tools_enable() {
-        let cli = Cli::parse_from(vec!["hermes", "tools", "enable", "web_search", "--platform", "discord"]);
+        let cli = Cli::parse_from(vec![
+            "hermes",
+            "tools",
+            "enable",
+            "web_search",
+            "--platform",
+            "discord",
+        ]);
         if let Commands::Tools(ToolsCommand::Enable { names, platform }) = cli.command.unwrap() {
             assert_eq!(names, vec!["web_search"]);
             assert_eq!(platform, "discord");
-        } else { panic!("expected Tools::Enable"); }
+        } else {
+            panic!("expected Tools::Enable");
+        }
     }
 
     // === Skills ===
     #[test]
     fn test_cli_parse_skills_search() {
         let cli = Cli::parse_from(vec!["hermes", "skills", "search", "web"]);
-        if let Commands::Skills(SkillsCommand::Search { query, source, limit, .. }) = cli.command.unwrap() {
+        if let Commands::Skills(SkillsCommand::Search { query, source, limit, .. }) =
+            cli.command.unwrap()
+        {
             assert_eq!(query, Some("web".to_string()));
             assert_eq!(source, "all");
             assert_eq!(limit, 10);
-        } else { panic!("expected Skills::Search"); }
+        } else {
+            panic!("expected Skills::Search");
+        }
     }
 
     #[test]
@@ -1497,16 +1680,28 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "skills", "inspect", "web-search"]);
         if let Commands::Skills(SkillsCommand::Inspect { name }) = cli.command.unwrap() {
             assert_eq!(name, "web-search");
-        } else { panic!("expected Skills::Inspect"); }
+        } else {
+            panic!("expected Skills::Inspect");
+        }
     }
 
     #[test]
     fn test_cli_parse_skills_install() {
-        let cli = Cli::parse_from(vec!["hermes", "skills", "install", "openai/skills/skill-creator", "--force"]);
-        if let Commands::Skills(SkillsCommand::Install { identifier, force, .. }) = cli.command.unwrap() {
+        let cli = Cli::parse_from(vec![
+            "hermes",
+            "skills",
+            "install",
+            "openai/skills/skill-creator",
+            "--force",
+        ]);
+        if let Commands::Skills(SkillsCommand::Install { identifier, force, .. }) =
+            cli.command.unwrap()
+        {
             assert_eq!(identifier, "openai/skills/skill-creator");
             assert!(force);
-        } else { panic!("expected Skills::Install"); }
+        } else {
+            panic!("expected Skills::Install");
+        }
     }
 
     #[test]
@@ -1514,17 +1709,39 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "skills", "list", "--source", "hub"]);
         if let Commands::Skills(SkillsCommand::List { source }) = cli.command.unwrap() {
             assert_eq!(source, "hub");
-        } else { panic!("expected Skills::List"); }
+        } else {
+            panic!("expected Skills::List");
+        }
     }
 
     #[test]
-    fn test_cli_parse_skills_check() { assert!(matches!(Cli::parse_from(vec!["hermes", "skills", "check"]).command.unwrap(), Commands::Skills(SkillsCommand::Check { .. }))); }
+    fn test_cli_parse_skills_check() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "skills", "check"]).command.unwrap(),
+            Commands::Skills(SkillsCommand::Check { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_skills_update() { assert!(matches!(Cli::parse_from(vec!["hermes", "skills", "update"]).command.unwrap(), Commands::Skills(SkillsCommand::Update { .. }))); }
+    fn test_cli_parse_skills_update() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "skills", "update"]).command.unwrap(),
+            Commands::Skills(SkillsCommand::Update { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_skills_audit() { assert!(matches!(Cli::parse_from(vec!["hermes", "skills", "audit"]).command.unwrap(), Commands::Skills(SkillsCommand::Audit { .. }))); }
+    fn test_cli_parse_skills_audit() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "skills", "audit"]).command.unwrap(),
+            Commands::Skills(SkillsCommand::Audit { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_skills_uninstall() { assert!(matches!(Cli::parse_from(vec!["hermes", "skills", "uninstall", "foo"]).command.unwrap(), Commands::Skills(SkillsCommand::Uninstall { .. }))); }
+    fn test_cli_parse_skills_uninstall() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "skills", "uninstall", "foo"]).command.unwrap(),
+            Commands::Skills(SkillsCommand::Uninstall { .. })
+        ));
+    }
 
     // === Gateway ===
     #[test]
@@ -1532,7 +1749,9 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "gateway", "run"]);
         if let Commands::Gateway(GatewayCommand::Run { platform, .. }) = cli.command.unwrap() {
             assert_eq!(platform, None);
-        } else { panic!("expected Gateway::Run"); }
+        } else {
+            panic!("expected Gateway::Run");
+        }
     }
 
     #[test]
@@ -1540,121 +1759,250 @@ mod tests {
         let cli = Cli::parse_from(vec!["hermes", "gateway", "run", "-P", "telegram"]);
         if let Commands::Gateway(GatewayCommand::Run { platform, .. }) = cli.command.unwrap() {
             assert_eq!(platform, Some("telegram".to_string()));
-        } else { panic!("expected Gateway::Run"); }
+        } else {
+            panic!("expected Gateway::Run");
+        }
     }
 
     #[test]
-    fn test_cli_parse_gateway_start() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "start"]).command.unwrap(), Commands::Gateway(GatewayCommand::Start { .. }))); }
+    fn test_cli_parse_gateway_start() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "start"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Start { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_gateway_stop() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "stop"]).command.unwrap(), Commands::Gateway(GatewayCommand::Stop { .. }))); }
+    fn test_cli_parse_gateway_stop() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "stop"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Stop { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_gateway_restart() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "restart"]).command.unwrap(), Commands::Gateway(GatewayCommand::Restart { .. }))); }
+    fn test_cli_parse_gateway_restart() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "restart"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Restart { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_gateway_status() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "status"]).command.unwrap(), Commands::Gateway(GatewayCommand::Status { .. }))); }
+    fn test_cli_parse_gateway_status() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "status"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Status { .. })
+        ));
+    }
     #[test]
     fn test_cli_parse_gateway_setup() {
         let cli = Cli::parse_from(vec!["hermes", "gateway", "setup", "telegram"]);
         if let Commands::Gateway(GatewayCommand::Setup { platform }) = cli.command.unwrap() {
             assert_eq!(platform, Some("telegram".to_string()));
-        } else { panic!("expected Gateway::Setup"); }
+        } else {
+            panic!("expected Gateway::Setup");
+        }
     }
     #[test]
-    fn test_cli_parse_gateway_install() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "install"]).command.unwrap(), Commands::Gateway(GatewayCommand::Install { .. }))); }
+    fn test_cli_parse_gateway_install() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "install"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Install { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_gateway_uninstall() { assert!(matches!(Cli::parse_from(vec!["hermes", "gateway", "uninstall"]).command.unwrap(), Commands::Gateway(GatewayCommand::Uninstall { .. }))); }
+    fn test_cli_parse_gateway_uninstall() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "gateway", "uninstall"]).command.unwrap(),
+            Commands::Gateway(GatewayCommand::Uninstall { .. })
+        ));
+    }
 
     // === Cron ===
     #[test]
-    fn test_cli_parse_cron_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "list"]).command.unwrap(), Commands::Cron(CronCommand::List { .. }))); }
+    fn test_cli_parse_cron_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "list"]).command.unwrap(),
+            Commands::Cron(CronCommand::List { .. })
+        ));
+    }
     #[test]
     fn test_cli_parse_cron_add() {
         let cli = Cli::parse_from(vec!["hermes", "cron", "add", "every 30m", "check status"]);
         if let Commands::Cron(CronCommand::Add { schedule, command, .. }) = cli.command.unwrap() {
             assert_eq!(schedule, "every 30m");
             assert_eq!(command, Some("check status".to_string()));
-        } else { panic!("expected Cron::Add"); }
+        } else {
+            panic!("expected Cron::Add");
+        }
     }
     #[test]
-    fn test_cli_parse_cron_remove() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "remove", "abc123"]).command.unwrap(), Commands::Cron(CronCommand::Remove { .. }))); }
+    fn test_cli_parse_cron_remove() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "remove", "abc123"]).command.unwrap(),
+            Commands::Cron(CronCommand::Remove { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_pause() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "pause", "abc123"]).command.unwrap(), Commands::Cron(CronCommand::Pause { .. }))); }
+    fn test_cli_parse_cron_pause() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "pause", "abc123"]).command.unwrap(),
+            Commands::Cron(CronCommand::Pause { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_resume() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "resume", "abc123"]).command.unwrap(), Commands::Cron(CronCommand::Resume { .. }))); }
+    fn test_cli_parse_cron_resume() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "resume", "abc123"]).command.unwrap(),
+            Commands::Cron(CronCommand::Resume { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_run() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "run", "abc123"]).command.unwrap(), Commands::Cron(CronCommand::Run { .. }))); }
+    fn test_cli_parse_cron_run() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "run", "abc123"]).command.unwrap(),
+            Commands::Cron(CronCommand::Run { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_status() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "status"]).command.unwrap(), Commands::Cron(CronCommand::Status))); }
+    fn test_cli_parse_cron_status() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "status"]).command.unwrap(),
+            Commands::Cron(CronCommand::Status)
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_tick() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "tick"]).command.unwrap(), Commands::Cron(CronCommand::Tick))); }
+    fn test_cli_parse_cron_tick() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "tick"]).command.unwrap(),
+            Commands::Cron(CronCommand::Tick)
+        ));
+    }
     #[test]
-    fn test_cli_parse_cron_edit() { assert!(matches!(Cli::parse_from(vec!["hermes", "cron", "edit", "abc123"]).command.unwrap(), Commands::Cron(CronCommand::Edit { .. }))); }
+    fn test_cli_parse_cron_edit() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "cron", "edit", "abc123"]).command.unwrap(),
+            Commands::Cron(CronCommand::Edit { .. })
+        ));
+    }
 
     // === Config ===
     #[test]
-    fn test_cli_parse_config_show() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "show"]).command.unwrap(), Commands::Config(ConfigCommand::Show))); }
+    fn test_cli_parse_config_show() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "show"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Show)
+        ));
+    }
     #[test]
     fn test_cli_parse_config_get() {
         let cli = Cli::parse_from(vec!["hermes", "config", "get", "model.default"]);
         if let Commands::Config(ConfigCommand::Get { key }) = cli.command.unwrap() {
             assert_eq!(key, "model.default");
-        } else { panic!("expected Config::Get"); }
+        } else {
+            panic!("expected Config::Get");
+        }
     }
     #[test]
     fn test_cli_parse_config_set() {
         let cli = Cli::parse_from(vec!["hermes", "config", "set", "model.default", "gpt-4"]);
         if let Commands::Config(ConfigCommand::Set { key, value }) = cli.command.unwrap() {
-            assert_eq!(key, "model.default"); assert_eq!(value, "gpt-4");
-        } else { panic!("expected Config::Set"); }
+            assert_eq!(key, "model.default");
+            assert_eq!(value, "gpt-4");
+        } else {
+            panic!("expected Config::Set");
+        }
     }
     #[test]
-    fn test_cli_parse_config_reset() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "reset"]).command.unwrap(), Commands::Config(ConfigCommand::Reset))); }
+    fn test_cli_parse_config_reset() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "reset"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Reset)
+        ));
+    }
     #[test]
-    fn test_cli_parse_config_edit() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "edit"]).command.unwrap(), Commands::Config(ConfigCommand::Edit))); }
+    fn test_cli_parse_config_edit() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "edit"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Edit)
+        ));
+    }
     #[test]
-    fn test_cli_parse_config_path() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "path"]).command.unwrap(), Commands::Config(ConfigCommand::Path))); }
+    fn test_cli_parse_config_path() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "path"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Path)
+        ));
+    }
     #[test]
-    fn test_cli_parse_config_env_path() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "env-path"]).command.unwrap(), Commands::Config(ConfigCommand::EnvPath))); }
+    fn test_cli_parse_config_env_path() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "env-path"]).command.unwrap(),
+            Commands::Config(ConfigCommand::EnvPath)
+        ));
+    }
     #[test]
-    fn test_cli_parse_config_check() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "check"]).command.unwrap(), Commands::Config(ConfigCommand::Check))); }
+    fn test_cli_parse_config_check() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "check"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Check)
+        ));
+    }
     #[test]
-    fn test_cli_parse_config_migrate() { assert!(matches!(Cli::parse_from(vec!["hermes", "config", "migrate"]).command.unwrap(), Commands::Config(ConfigCommand::Migrate))); }
+    fn test_cli_parse_config_migrate() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "config", "migrate"]).command.unwrap(),
+            Commands::Config(ConfigCommand::Migrate)
+        ));
+    }
 
     // === Setup / Doctor ===
     #[test]
     fn test_cli_parse_setup() {
         let cli = Cli::parse_from(vec!["hermes", "setup"]);
         if let Commands::Setup { skip_auth, skip_model, .. } = cli.command.unwrap() {
-            assert!(!skip_auth); assert!(!skip_model);
-        } else { panic!("expected Setup"); }
+            assert!(!skip_auth);
+            assert!(!skip_model);
+        } else {
+            panic!("expected Setup");
+        }
     }
     #[test]
     fn test_cli_parse_setup_skip_auth() {
         let cli = Cli::parse_from(vec!["hermes", "setup", "--skip-auth"]);
         if let Commands::Setup { skip_auth, skip_model, .. } = cli.command.unwrap() {
-            assert!(skip_auth); assert!(!skip_model);
-        } else { panic!("expected Setup"); }
+            assert!(skip_auth);
+            assert!(!skip_model);
+        } else {
+            panic!("expected Setup");
+        }
     }
     #[test]
     fn test_cli_parse_setup_section() {
         let cli = Cli::parse_from(vec!["hermes", "setup", "gateway"]);
         if let Commands::Setup { section, .. } = cli.command.unwrap() {
             assert_eq!(section, Some("gateway".to_string()));
-        } else { panic!("expected Setup"); }
+        } else {
+            panic!("expected Setup");
+        }
     }
 
     #[test]
     fn test_cli_parse_doctor() {
         let cli = Cli::parse_from(vec!["hermes", "doctor"]);
         if let Commands::Doctor { all, check, .. } = cli.command.unwrap() {
-            assert!(!all); assert_eq!(check, None);
-        } else { panic!("expected Doctor"); }
+            assert!(!all);
+            assert_eq!(check, None);
+        } else {
+            panic!("expected Doctor");
+        }
     }
     #[test]
     fn test_cli_parse_doctor_fix() {
         let cli = Cli::parse_from(vec!["hermes", "doctor", "--fix"]);
         if let Commands::Doctor { fix, .. } = cli.command.unwrap() {
             assert!(fix);
-        } else { panic!("expected Doctor"); }
+        } else {
+            panic!("expected Doctor");
+        }
     }
 
     // === Status ===
@@ -1662,160 +2010,380 @@ mod tests {
     fn test_cli_parse_status() {
         let cli = Cli::parse_from(vec!["hermes", "status"]);
         if let Commands::Status { all, deep } = cli.command.unwrap() {
-            assert!(!all); assert!(!deep);
-        } else { panic!("expected Status"); }
+            assert!(!all);
+            assert!(!deep);
+        } else {
+            panic!("expected Status");
+        }
     }
     #[test]
     fn test_cli_parse_status_all() {
         let cli = Cli::parse_from(vec!["hermes", "status", "--all", "--deep"]);
         if let Commands::Status { all, deep } = cli.command.unwrap() {
-            assert!(all); assert!(deep);
-        } else { panic!("expected Status"); }
+            assert!(all);
+            assert!(deep);
+        } else {
+            panic!("expected Status");
+        }
     }
 
     // === Sessions ===
     #[test]
-    fn test_cli_parse_sessions_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "list"]).command.unwrap(), Commands::Sessions(SessionsCommand::List { .. }))); }
+    fn test_cli_parse_sessions_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "list"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::List { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_export() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "export", "out.json"]).command.unwrap(), Commands::Sessions(SessionsCommand::Export { .. }))); }
+    fn test_cli_parse_sessions_export() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "export", "out.json"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::Export { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_delete() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "delete", "abc123"]).command.unwrap(), Commands::Sessions(SessionsCommand::Delete { .. }))); }
+    fn test_cli_parse_sessions_delete() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "delete", "abc123"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::Delete { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_prune() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "prune"]).command.unwrap(), Commands::Sessions(SessionsCommand::Prune { .. }))); }
+    fn test_cli_parse_sessions_prune() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "prune"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::Prune { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_stats() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "stats"]).command.unwrap(), Commands::Sessions(SessionsCommand::Stats))); }
+    fn test_cli_parse_sessions_stats() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "stats"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::Stats)
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_rename() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "rename", "abc123", "My", "Session"]).command.unwrap(), Commands::Sessions(SessionsCommand::Rename { .. }))); }
+    fn test_cli_parse_sessions_rename() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "rename", "abc123", "My", "Session"])
+                .command
+                .unwrap(),
+            Commands::Sessions(SessionsCommand::Rename { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_sessions_browse() { assert!(matches!(Cli::parse_from(vec!["hermes", "sessions", "browse"]).command.unwrap(), Commands::Sessions(SessionsCommand::Browse { .. }))); }
+    fn test_cli_parse_sessions_browse() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "sessions", "browse"]).command.unwrap(),
+            Commands::Sessions(SessionsCommand::Browse { .. })
+        ));
+    }
 
     // === Logs ===
     #[test]
     fn test_cli_parse_logs() {
         let cli = Cli::parse_from(vec!["hermes", "logs"]);
         if let Commands::Logs { log_name, lines, .. } = cli.command.unwrap() {
-            assert_eq!(log_name, None); assert_eq!(lines, 50);
-        } else { panic!("expected Logs"); }
+            assert_eq!(log_name, None);
+            assert_eq!(lines, 50);
+        } else {
+            panic!("expected Logs");
+        }
     }
     #[test]
     fn test_cli_parse_logs_with_options() {
-        let cli = Cli::parse_from(vec!["hermes", "logs", "errors", "--lines", "100", "-f", "--level", "WARNING"]);
+        let cli = Cli::parse_from(vec![
+            "hermes", "logs", "errors", "--lines", "100", "-f", "--level", "WARNING",
+        ]);
         if let Commands::Logs { log_name, lines, follow, level, .. } = cli.command.unwrap() {
             assert_eq!(log_name, Some("errors".to_string()));
             assert_eq!(lines, 100);
             assert!(follow);
             assert_eq!(level, Some("WARNING".to_string()));
-        } else { panic!("expected Logs"); }
+        } else {
+            panic!("expected Logs");
+        }
     }
 
     // === Profile ===
     #[test]
-    fn test_cli_parse_profile_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "profile", "list"]).command.unwrap(), Commands::Profile(ProfileCommand::List))); }
+    fn test_cli_parse_profile_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "profile", "list"]).command.unwrap(),
+            Commands::Profile(ProfileCommand::List)
+        ));
+    }
     #[test]
-    fn test_cli_parse_profile_use() { assert!(matches!(Cli::parse_from(vec!["hermes", "profile", "use", "work"]).command.unwrap(), Commands::Profile(ProfileCommand::Use { .. }))); }
+    fn test_cli_parse_profile_use() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "profile", "use", "work"]).command.unwrap(),
+            Commands::Profile(ProfileCommand::Use { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_profile_create() { assert!(matches!(Cli::parse_from(vec!["hermes", "profile", "create", "test"]).command.unwrap(), Commands::Profile(ProfileCommand::Create { .. }))); }
+    fn test_cli_parse_profile_create() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "profile", "create", "test"]).command.unwrap(),
+            Commands::Profile(ProfileCommand::Create { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_profile_delete() { assert!(matches!(Cli::parse_from(vec!["hermes", "profile", "delete", "test"]).command.unwrap(), Commands::Profile(ProfileCommand::Delete { .. }))); }
+    fn test_cli_parse_profile_delete() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "profile", "delete", "test"]).command.unwrap(),
+            Commands::Profile(ProfileCommand::Delete { .. })
+        ));
+    }
 
     // === MCP ===
     #[test]
-    fn test_cli_parse_mcp_serve() { assert!(matches!(Cli::parse_from(vec!["hermes", "mcp", "serve"]).command.unwrap(), Commands::Mcp(McpCommand::Serve { .. }))); }
+    fn test_cli_parse_mcp_serve() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "mcp", "serve"]).command.unwrap(),
+            Commands::Mcp(McpCommand::Serve { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_mcp_add() { assert!(matches!(Cli::parse_from(vec!["hermes", "mcp", "add", "github"]).command.unwrap(), Commands::Mcp(McpCommand::Add { .. }))); }
+    fn test_cli_parse_mcp_add() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "mcp", "add", "github"]).command.unwrap(),
+            Commands::Mcp(McpCommand::Add { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_mcp_remove() { assert!(matches!(Cli::parse_from(vec!["hermes", "mcp", "remove", "github"]).command.unwrap(), Commands::Mcp(McpCommand::Remove { .. }))); }
+    fn test_cli_parse_mcp_remove() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "mcp", "remove", "github"]).command.unwrap(),
+            Commands::Mcp(McpCommand::Remove { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_mcp_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "mcp", "list"]).command.unwrap(), Commands::Mcp(McpCommand::List))); }
+    fn test_cli_parse_mcp_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "mcp", "list"]).command.unwrap(),
+            Commands::Mcp(McpCommand::List)
+        ));
+    }
 
     // === Memory ===
     #[test]
-    fn test_cli_parse_memory_setup() { assert!(matches!(Cli::parse_from(vec!["hermes", "memory", "setup"]).command.unwrap(), Commands::Memory(MemoryCommand::Setup))); }
+    fn test_cli_parse_memory_setup() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "memory", "setup"]).command.unwrap(),
+            Commands::Memory(MemoryCommand::Setup)
+        ));
+    }
     #[test]
-    fn test_cli_parse_memory_status() { assert!(matches!(Cli::parse_from(vec!["hermes", "memory", "status"]).command.unwrap(), Commands::Memory(MemoryCommand::Status))); }
+    fn test_cli_parse_memory_status() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "memory", "status"]).command.unwrap(),
+            Commands::Memory(MemoryCommand::Status)
+        ));
+    }
     #[test]
-    fn test_cli_parse_memory_off() { assert!(matches!(Cli::parse_from(vec!["hermes", "memory", "off"]).command.unwrap(), Commands::Memory(MemoryCommand::Off))); }
+    fn test_cli_parse_memory_off() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "memory", "off"]).command.unwrap(),
+            Commands::Memory(MemoryCommand::Off)
+        ));
+    }
 
     // === Webhook ===
     #[test]
-    fn test_cli_parse_webhook_subscribe() { assert!(matches!(Cli::parse_from(vec!["hermes", "webhook", "subscribe", "test"]).command.unwrap(), Commands::Webhook(WebhookCommand::Subscribe { .. }))); }
+    fn test_cli_parse_webhook_subscribe() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "webhook", "subscribe", "test"]).command.unwrap(),
+            Commands::Webhook(WebhookCommand::Subscribe { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_webhook_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "webhook", "list"]).command.unwrap(), Commands::Webhook(WebhookCommand::List))); }
+    fn test_cli_parse_webhook_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "webhook", "list"]).command.unwrap(),
+            Commands::Webhook(WebhookCommand::List)
+        ));
+    }
 
     // === Pairing ===
     #[test]
-    fn test_cli_parse_pairing_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "pairing", "list"]).command.unwrap(), Commands::Pairing(PairingCommand::List))); }
+    fn test_cli_parse_pairing_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "pairing", "list"]).command.unwrap(),
+            Commands::Pairing(PairingCommand::List)
+        ));
+    }
     #[test]
-    fn test_cli_parse_pairing_approve() { assert!(matches!(Cli::parse_from(vec!["hermes", "pairing", "approve", "telegram", "ABC123"]).command.unwrap(), Commands::Pairing(PairingCommand::Approve { .. }))); }
+    fn test_cli_parse_pairing_approve() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "pairing", "approve", "telegram", "ABC123"])
+                .command
+                .unwrap(),
+            Commands::Pairing(PairingCommand::Approve { .. })
+        ));
+    }
 
     // === Plugins ===
     #[test]
-    fn test_cli_parse_plugins_install() { assert!(matches!(Cli::parse_from(vec!["hermes", "plugins", "install", "foo/bar"]).command.unwrap(), Commands::Plugins(PluginsCommand::Install { .. }))); }
+    fn test_cli_parse_plugins_install() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "plugins", "install", "foo/bar"]).command.unwrap(),
+            Commands::Plugins(PluginsCommand::Install { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_plugins_list() { assert!(matches!(Cli::parse_from(vec!["hermes", "plugins", "list"]).command.unwrap(), Commands::Plugins(PluginsCommand::List))); }
+    fn test_cli_parse_plugins_list() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "plugins", "list"]).command.unwrap(),
+            Commands::Plugins(PluginsCommand::List)
+        ));
+    }
 
     // === Backup / Import ===
     #[test]
     fn test_cli_parse_backup() {
         let cli = Cli::parse_from(vec!["hermes", "backup", "--quick"]);
-        if let Commands::Backup { quick, .. } = cli.command.unwrap() { assert!(quick); } else { panic!("expected Backup"); }
+        if let Commands::Backup { quick, .. } = cli.command.unwrap() {
+            assert!(quick);
+        } else {
+            panic!("expected Backup");
+        }
     }
     #[test]
     fn test_cli_parse_import() {
         let cli = Cli::parse_from(vec!["hermes", "import", "backup.zip", "--force"]);
         if let Commands::Import { zipfile, force } = cli.command.unwrap() {
-            assert_eq!(zipfile, "backup.zip"); assert!(force);
-        } else { panic!("expected Import"); }
+            assert_eq!(zipfile, "backup.zip");
+            assert!(force);
+        } else {
+            panic!("expected Import");
+        }
     }
 
     // === Debug / Dump ===
     #[test]
-    fn test_cli_parse_debug_share() { assert!(matches!(Cli::parse_from(vec!["hermes", "debug", "share"]).command.unwrap(), Commands::Debug(DebugCommand::Share { .. }))); }
+    fn test_cli_parse_debug_share() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "debug", "share"]).command.unwrap(),
+            Commands::Debug(DebugCommand::Share { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_dump() { assert!(matches!(Cli::parse_from(vec!["hermes", "dump"]).command.unwrap(), Commands::Dump { .. })); }
+    fn test_cli_parse_dump() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "dump"]).command.unwrap(),
+            Commands::Dump { .. }
+        ));
+    }
 
     // === Completion / Insights ===
     #[test]
-    fn test_cli_parse_completion() { assert!(matches!(Cli::parse_from(vec!["hermes", "completion", "bash"]).command.unwrap(), Commands::Completion { .. })); }
+    fn test_cli_parse_completion() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "completion", "bash"]).command.unwrap(),
+            Commands::Completion { .. }
+        ));
+    }
     #[test]
-    fn test_cli_parse_insights() { assert!(matches!(Cli::parse_from(vec!["hermes", "insights"]).command.unwrap(), Commands::Insights { .. })); }
+    fn test_cli_parse_insights() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "insights"]).command.unwrap(),
+            Commands::Insights { .. }
+        ));
+    }
 
     // === Login / Logout ===
     #[test]
-    fn test_cli_parse_login() { assert!(matches!(Cli::parse_from(vec!["hermes", "login"]).command.unwrap(), Commands::Login { .. })); }
+    fn test_cli_parse_login() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "login"]).command.unwrap(),
+            Commands::Login { .. }
+        ));
+    }
     #[test]
-    fn test_cli_parse_logout() { assert!(matches!(Cli::parse_from(vec!["hermes", "logout"]).command.unwrap(), Commands::Logout { .. })); }
+    fn test_cli_parse_logout() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "logout"]).command.unwrap(),
+            Commands::Logout { .. }
+        ));
+    }
 
     // === WhatsApp / ACP / Dashboard ===
     #[test]
-    fn test_cli_parse_whatsapp() { assert!(matches!(Cli::parse_from(vec!["hermes", "whatsapp"]).command.unwrap(), Commands::Whatsapp)); }
+    fn test_cli_parse_whatsapp() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "whatsapp"]).command.unwrap(),
+            Commands::Whatsapp
+        ));
+    }
     #[test]
-    fn test_cli_parse_acp() { assert!(matches!(Cli::parse_from(vec!["hermes", "acp"]).command.unwrap(), Commands::Acp)); }
+    fn test_cli_parse_acp() {
+        assert!(matches!(Cli::parse_from(vec!["hermes", "acp"]).command.unwrap(), Commands::Acp));
+    }
     #[test]
-    fn test_cli_parse_dashboard() { assert!(matches!(Cli::parse_from(vec!["hermes", "dashboard"]).command.unwrap(), Commands::Dashboard { .. })); }
+    fn test_cli_parse_dashboard() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "dashboard"]).command.unwrap(),
+            Commands::Dashboard { .. }
+        ));
+    }
 
     // === Claw ===
     #[test]
-    fn test_cli_parse_claw_migrate() { assert!(matches!(Cli::parse_from(vec!["hermes", "claw", "migrate"]).command.unwrap(), Commands::Claw(ClawCommand::Migrate { .. }))); }
+    fn test_cli_parse_claw_migrate() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "claw", "migrate"]).command.unwrap(),
+            Commands::Claw(ClawCommand::Migrate { .. })
+        ));
+    }
     #[test]
-    fn test_cli_parse_claw_cleanup() { assert!(matches!(Cli::parse_from(vec!["hermes", "claw", "cleanup"]).command.unwrap(), Commands::Claw(ClawCommand::Cleanup { .. }))); }
+    fn test_cli_parse_claw_cleanup() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "claw", "cleanup"]).command.unwrap(),
+            Commands::Claw(ClawCommand::Cleanup { .. })
+        ));
+    }
 
     // === Version / Update / Uninstall ===
     #[test]
-    fn test_cli_parse_version() { assert!(matches!(Cli::parse_from(vec!["hermes", "version"]).command.unwrap(), Commands::Version)); }
+    fn test_cli_parse_version() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "version"]).command.unwrap(),
+            Commands::Version
+        ));
+    }
     #[test]
-    fn test_cli_parse_update() { assert!(matches!(Cli::parse_from(vec!["hermes", "update"]).command.unwrap(), Commands::Update { .. })); }
+    fn test_cli_parse_update() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "update"]).command.unwrap(),
+            Commands::Update { .. }
+        ));
+    }
     #[test]
     fn test_cli_parse_update_gateway() {
         let cli = Cli::parse_from(vec!["hermes", "update", "--gateway"]);
-        if let Commands::Update { gateway } = cli.command.unwrap() { assert!(gateway); } else { panic!("expected Update"); }
+        if let Commands::Update { gateway } = cli.command.unwrap() {
+            assert!(gateway);
+        } else {
+            panic!("expected Update");
+        }
     }
     #[test]
-    fn test_cli_parse_uninstall() { assert!(matches!(Cli::parse_from(vec!["hermes", "uninstall"]).command.unwrap(), Commands::Uninstall { .. })); }
+    fn test_cli_parse_uninstall() {
+        assert!(matches!(
+            Cli::parse_from(vec!["hermes", "uninstall"]).command.unwrap(),
+            Commands::Uninstall { .. }
+        ));
+    }
     #[test]
     fn test_cli_parse_uninstall_full() {
         let cli = Cli::parse_from(vec!["hermes", "uninstall", "--full", "--yes"]);
-        if let Commands::Uninstall { full, yes } = cli.command.unwrap() { assert!(full); assert!(yes); } else { panic!("expected Uninstall"); }
+        if let Commands::Uninstall { full, yes } = cli.command.unwrap() {
+            assert!(full);
+            assert!(yes);
+        } else {
+            panic!("expected Uninstall");
+        }
     }
 
     // === Models ===
@@ -1826,7 +2394,9 @@ mod tests {
             assert!(provider.is_none());
             assert!(!tools);
             assert!(!pricing);
-        } else { panic!("expected Models"); }
+        } else {
+            panic!("expected Models");
+        }
     }
     #[test]
     fn test_cli_parse_models_with_provider() {
@@ -1835,7 +2405,9 @@ mod tests {
             assert_eq!(provider, Some("openai".to_string()));
             assert!(!tools);
             assert!(!pricing);
-        } else { panic!("expected Models"); }
+        } else {
+            panic!("expected Models");
+        }
     }
     #[test]
     fn test_cli_parse_models_with_flags() {
@@ -1844,7 +2416,9 @@ mod tests {
             assert!(provider.is_none());
             assert!(tools);
             assert!(pricing);
-        } else { panic!("expected Models"); }
+        } else {
+            panic!("expected Models");
+        }
     }
 
     // === Global flags ===

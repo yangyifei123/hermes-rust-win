@@ -42,9 +42,7 @@ impl CredentialEntry {
     /// Mark this credential as rate-limited.
     pub fn mark_rate_limited(&mut self, retry_after: Option<u64>) {
         self.rate_limited_at = Some(Instant::now());
-        self.cooldown = retry_after
-            .map(Duration::from_secs)
-            .unwrap_or(Duration::from_secs(60));
+        self.cooldown = retry_after.map(Duration::from_secs).unwrap_or(Duration::from_secs(60));
         self.failures += 1;
     }
 
@@ -71,10 +69,7 @@ impl Default for CredentialPool {
 
 impl CredentialPool {
     pub fn new() -> Self {
-        Self {
-            pool: Mutex::new(HashMap::new()),
-            index: Mutex::new(HashMap::new()),
-        }
+        Self { pool: Mutex::new(HashMap::new()), index: Mutex::new(HashMap::new()) }
     }
 
     /// Create a pool pre-loaded from an AuthStore's credentials.
@@ -131,10 +126,7 @@ impl CredentialPool {
         }
 
         // All in cooldown — return the one closest to expiry as last resort
-        let best = entries
-            .iter()
-            .min_by_key(|e| e.rate_limited_at.map(|t| t.elapsed()))
-            .unwrap();
+        let best = entries.iter().min_by_key(|e| e.rate_limited_at.map(|t| t.elapsed())).unwrap();
         Some(best.clone())
     }
 
@@ -160,12 +152,7 @@ impl CredentialPool {
 
     /// Get the number of credentials for a provider.
     pub fn count(&self, provider: &str) -> usize {
-        self.pool
-            .lock()
-            .unwrap()
-            .get(provider)
-            .map(|v| v.len())
-            .unwrap_or(0)
+        self.pool.lock().unwrap().get(provider).map(|v| v.len()).unwrap_or(0)
     }
 
     /// Get the number of available (non-cooldown) credentials for a provider.

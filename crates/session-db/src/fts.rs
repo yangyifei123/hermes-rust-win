@@ -27,14 +27,8 @@ pub fn sanitize_fts5_query(query: &str) -> String {
     s = Regex::new(r"\*+").unwrap().replace_all(&s, "*").to_string();
 
     // Step 4: Remove dangling operators
-    s = Regex::new(r"(?i)^(AND|OR|NOT)\s+")
-        .unwrap()
-        .replace_all(&s, "")
-        .to_string();
-    s = Regex::new(r"(?i)\s+(AND|OR|NOT)$")
-        .unwrap()
-        .replace_all(&s, "")
-        .to_string();
+    s = Regex::new(r"(?i)^(AND|OR|NOT)\s+").unwrap().replace_all(&s, "").to_string();
+    s = Regex::new(r"(?i)\s+(AND|OR|NOT)$").unwrap().replace_all(&s, "").to_string();
 
     // Step 5: Restore quoted phrases
     for (i, q) in quoted.iter().enumerate() {
@@ -73,10 +67,7 @@ mod tests {
 
     #[test]
     fn test_preserves_quoted_phrases() {
-        assert_eq!(
-            sanitize_fts5_query(r#""exact phrase" rest"#),
-            r#""exact phrase" rest"#
-        );
+        assert_eq!(sanitize_fts5_query(r#""exact phrase" rest"#), r#""exact phrase" rest"#);
     }
 
     #[test]

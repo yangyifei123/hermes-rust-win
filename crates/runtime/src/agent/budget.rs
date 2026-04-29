@@ -14,10 +14,7 @@ pub struct IterationBudget {
 impl IterationBudget {
     /// Create a new budget allowing up to `max_total` iterations.
     pub fn new(max_total: u32) -> Self {
-        Self {
-            max_total,
-            used: Mutex::new(0),
-        }
+        Self { max_total, used: Mutex::new(0) }
     }
 
     /// Attempt to consume one iteration slot.

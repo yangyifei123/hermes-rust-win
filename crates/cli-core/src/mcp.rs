@@ -158,10 +158,7 @@ pub fn test_server(server: &McpServer) -> Result<TestResult> {
         Ok(TestResult {
             success: true,
             response_time_ms: duration.as_millis() as u64,
-            message: format!(
-                "URL '{}' is valid (connection test not fully implemented)",
-                url
-            ),
+            message: format!("URL '{}' is valid (connection test not fully implemented)", url),
         })
     } else {
         Ok(TestResult {

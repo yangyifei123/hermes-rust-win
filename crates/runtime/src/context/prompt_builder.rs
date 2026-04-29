@@ -8,34 +8,13 @@ struct ToolInfo {
 
 /// Well-known built-in tool descriptions used when assembling the prompt.
 const BUILTIN_TOOLS: &[ToolInfo] = &[
-    ToolInfo {
-        name: "terminal",
-        description: "Execute shell commands",
-    },
-    ToolInfo {
-        name: "file_read",
-        description: "Read file contents",
-    },
-    ToolInfo {
-        name: "file_write",
-        description: "Write or create files",
-    },
-    ToolInfo {
-        name: "file_search",
-        description: "Search files by pattern",
-    },
-    ToolInfo {
-        name: "web_search",
-        description: "Search the web via DuckDuckGo",
-    },
-    ToolInfo {
-        name: "mcp",
-        description: "MCP protocol tools",
-    },
-    ToolInfo {
-        name: "browser",
-        description: "Browser automation",
-    },
+    ToolInfo { name: "terminal", description: "Execute shell commands" },
+    ToolInfo { name: "file_read", description: "Read file contents" },
+    ToolInfo { name: "file_write", description: "Write or create files" },
+    ToolInfo { name: "file_search", description: "Search files by pattern" },
+    ToolInfo { name: "web_search", description: "Search the web via DuckDuckGo" },
+    ToolInfo { name: "mcp", description: "MCP protocol tools" },
+    ToolInfo { name: "browser", description: "Browser automation" },
 ];
 
 /// Builder that constructs the system prompt sent to the LLM.
@@ -63,10 +42,7 @@ impl SystemPromptBuilder {
 
     /// Set the agent identity (name and version).
     pub fn with_identity(&mut self, name: &str, version: &str) -> &mut Self {
-        self.identity = Some(format!(
-            "You are {} v{}, an AI agent CLI tool.",
-            name, version
-        ));
+        self.identity = Some(format!("You are {} v{}, an AI agent CLI tool.", name, version));
         self
     }
 
@@ -123,10 +99,7 @@ impl SystemPromptBuilder {
         if self.date {
             // Fixed date keeps builds reproducible; callers can override via
             // with_custom if they need real-time dates.
-            parts.push(format!(
-                "Current date: {}",
-                chrono::Local::now().format("%Y-%m-%d")
-            ));
+            parts.push(format!("Current date: {}", chrono::Local::now().format("%Y-%m-%d")));
         }
 
         // OS info.

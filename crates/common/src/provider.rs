@@ -76,10 +76,7 @@ mod tests {
 
     #[test]
     fn test_detect_openai() {
-        assert_eq!(
-            detect_provider_from_url("https://api.openai.com/v1"),
-            Some(Provider::OpenAI)
-        );
+        assert_eq!(detect_provider_from_url("https://api.openai.com/v1"), Some(Provider::OpenAI));
     }
 
     #[test]
@@ -108,10 +105,7 @@ mod tests {
 
     #[test]
     fn test_detect_ollama() {
-        assert_eq!(
-            detect_provider_from_url("http://localhost:11434"),
-            Some(Provider::Ollama)
-        );
+        assert_eq!(detect_provider_from_url("http://localhost:11434"), Some(Provider::Ollama));
     }
 
     #[test]
@@ -121,10 +115,7 @@ mod tests {
 
     #[test]
     fn test_detect_case_insensitive() {
-        assert_eq!(
-            detect_provider_from_url("HTTPS://API.OPENAI.COM/V1"),
-            Some(Provider::OpenAI)
-        );
+        assert_eq!(detect_provider_from_url("HTTPS://API.OPENAI.COM/V1"), Some(Provider::OpenAI));
     }
 
     #[test]
@@ -138,10 +129,7 @@ mod tests {
     #[test]
     fn test_api_mode_anthropic_url_suffix() {
         assert_eq!(
-            detect_api_mode(
-                "https://openrouter.ai/api/v1/anthropic",
-                Provider::OpenRouter
-            ),
+            detect_api_mode("https://openrouter.ai/api/v1/anthropic", Provider::OpenRouter),
             ApiMode::AnthropicMessages
         );
     }

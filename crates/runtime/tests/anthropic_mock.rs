@@ -50,22 +50,12 @@ async fn test_anthropic_chat_completion_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Anthropic,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Anthropic, "test-key", Some(&mock_server.uri()));
 
     let response = provider.chat_completion(basic_request()).await.unwrap();
     assert_eq!(response.choices.len(), 1);
-    assert_eq!(
-        response.choices[0].message.text(),
-        "Hello from Anthropic mock!"
-    );
-    assert_eq!(
-        response.choices[0].finish_reason.as_deref(),
-        Some("end_turn")
-    );
+    assert_eq!(response.choices[0].message.text(), "Hello from Anthropic mock!");
+    assert_eq!(response.choices[0].finish_reason.as_deref(), Some("end_turn"));
     assert!(response.usage.is_some());
     let usage = response.usage.unwrap();
     assert_eq!(usage.input_tokens, 12);
@@ -80,29 +70,20 @@ async fn test_anthropic_error_handling_mock() {
 
     Mock::given(method("POST"))
         .and(path("/messages"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "type": "error",
-                "error": {"type": "authentication_error", "message": "invalid x-api-key"}
-            })),
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "type": "error",
+            "error": {"type": "authentication_error", "message": "invalid x-api-key"}
+        })))
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Anthropic,
-        "bad-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Anthropic, "bad-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
     match result.unwrap_err() {
         RuntimeError::ProviderError { message } => {
-            assert!(
-                message.contains("401"),
-                "expected 401 in error: {message}"
-            );
+            assert!(message.contains("401"), "expected 401 in error: {message}");
         }
         other => panic!("expected ProviderError, got: {other:?}"),
     }
@@ -123,11 +104,7 @@ async fn test_anthropic_rate_limit_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Anthropic,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Anthropic, "test-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
@@ -158,11 +135,7 @@ async fn test_anthropic_system_prompt_extraction() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Anthropic,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Anthropic, "test-key", Some(&mock_server.uri()));
 
     let request = ChatRequest {
         model: "claude-sonnet-4-20250514".to_string(),
@@ -177,10 +150,7 @@ async fn test_anthropic_system_prompt_extraction() {
     };
 
     let response = provider.chat_completion(request).await.unwrap();
-    assert_eq!(
-        response.choices[0].message.text(),
-        "I understand the system prompt."
-    );
+    assert_eq!(response.choices[0].message.text(), "I understand the system prompt.");
 }
 
 #[tokio::test]
@@ -193,11 +163,7 @@ async fn test_anthropic_empty_model_uses_default() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Anthropic,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Anthropic, "test-key", Some(&mock_server.uri()));
 
     let request = ChatRequest {
         model: String::new(),

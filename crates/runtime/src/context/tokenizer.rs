@@ -116,11 +116,7 @@ impl Tokenizer for HeuristicTokenizer {
         if text.is_empty() {
             return 0;
         }
-        let ratio = if Self::is_cjk_heavy(text) {
-            2.0
-        } else {
-            self.chars_per_token
-        };
+        let ratio = if Self::is_cjk_heavy(text) { 2.0 } else { self.chars_per_token };
         (text.len() as f64 / ratio).ceil() as usize
     }
 
@@ -188,14 +184,9 @@ impl TokenizerRegistry {
         let mut tokenizers: HashMap<String, Box<dyn Tokenizer>> = HashMap::new();
 
         // OpenAI models → TiktokenTokenizer
-        for model in &[
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4",
-            "gpt-4-turbo",
-            "gpt-3.5-turbo",
-            "gpt-3.5-turbo-16k",
-        ] {
+        for model in
+            &["gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
+        {
             tokenizers.insert(model.to_string(), Box::new(TiktokenTokenizer::new(*model)));
         }
 
@@ -210,18 +201,12 @@ impl TokenizerRegistry {
             tokenizers.insert(model.to_string(), Box::new(HeuristicTokenizer::new(3.5)));
         }
 
-        Self {
-            tokenizers,
-            fallback: Box::new(HeuristicTokenizer::default()),
-        }
+        Self { tokenizers, fallback: Box::new(HeuristicTokenizer::default()) }
     }
 
     /// Get the tokenizer for a given model name.
     pub fn for_model(&self, model: &str) -> &dyn Tokenizer {
-        self.tokenizers
-            .get(model)
-            .map(|b| b.as_ref())
-            .unwrap_or(self.fallback.as_ref())
+        self.tokenizers.get(model).map(|b| b.as_ref()).unwrap_or(self.fallback.as_ref())
     }
 
     /// Register a custom tokenizer for a model name.
@@ -270,10 +255,8 @@ impl TokenizerRegistry {
             (None, messages)
         };
 
-        let system_tokens = system
-            .as_ref()
-            .map(|s| tokenizer.count_tokens(s.text()) + 4)
-            .unwrap_or(0);
+        let system_tokens =
+            system.as_ref().map(|s| tokenizer.count_tokens(s.text()) + 4).unwrap_or(0);
 
         let budget = max_tokens.saturating_sub(system_tokens);
 
@@ -424,15 +407,10 @@ mod tests {
         for i in 0..50 {
             messages.push(msg(
                 "user",
-                &format!(
-                    "Message number {} with some padding text to increase token count.",
-                    i
-                ),
+                &format!("Message number {} with some padding text to increase token count.", i),
             ));
-            messages.push(msg(
-                "assistant",
-                &format!("Response number {} with some padding text.", i),
-            ));
+            messages
+                .push(msg("assistant", &format!("Response number {} with some padding text.", i)));
         }
         let truncated = registry.truncate_messages("gpt-4", messages, 200);
         assert_eq!(truncated[0].role, "system");
@@ -451,10 +429,7 @@ mod tests {
         }
         let truncated = registry.truncate_messages("gpt-4", messages.clone(), 100);
         assert!(truncated.len() < 20);
-        assert_eq!(
-            truncated.last().unwrap().text(),
-            messages.last().unwrap().text()
-        );
+        assert_eq!(truncated.last().unwrap().text(), messages.last().unwrap().text());
     }
 
     #[test]
@@ -476,9 +451,8 @@ mod tests {
     #[test]
     fn test_registry_truncate_respects_min_keep() {
         let registry = TokenizerRegistry::new();
-        let messages: Vec<ChatMessage> = (0..10)
-            .map(|i| msg("user", &format!("msg {}", i)))
-            .collect();
+        let messages: Vec<ChatMessage> =
+            (0..10).map(|i| msg("user", &format!("msg {}", i))).collect();
         let truncated = registry.truncate_messages("gpt-4", messages, 10);
         assert!(truncated.len() >= 2);
     }

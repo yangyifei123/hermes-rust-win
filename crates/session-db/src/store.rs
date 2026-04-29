@@ -36,9 +36,7 @@ where
         }
         return result;
     }
-    Err(SessionError::DatabaseError(
-        "database locked after max retries".into(),
-    ))
+    Err(SessionError::DatabaseError("database locked after max retries".into()))
 }
 
 pub struct SessionStore {
@@ -287,18 +285,13 @@ impl SessionStore {
         if skip == 0 {
             return Ok(0);
         }
-        let to_delete: Vec<String> = messages[keep_first..keep_first + skip]
-            .iter()
-            .map(|m| m.id.to_string())
-            .collect();
+        let to_delete: Vec<String> =
+            messages[keep_first..keep_first + skip].iter().map(|m| m.id.to_string()).collect();
         let sid = session_id.to_string();
         execute_write_with_retry(&self.conn, |conn| {
             for id in &to_delete {
-                conn.execute(
-                    "DELETE FROM messages WHERE id = ?1",
-                    [id],
-                )
-                .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
+                conn.execute("DELETE FROM messages WHERE id = ?1", [id])
+                    .map_err(|e| SessionError::DatabaseError(e.to_string()))?;
             }
             conn.execute(
                 "UPDATE sessions SET updated_at = ?1 WHERE id = ?2",
@@ -339,15 +332,9 @@ mod tests {
     fn test_message_append_and_retrieve() {
         let store = SessionStore::new_in_memory().unwrap();
         let session = store.create_session("test-model", "").unwrap();
-        store
-            .append_message(&session.id, MessageRole::User, "hello")
-            .unwrap();
-        store
-            .append_message(&session.id, MessageRole::Assistant, "world")
-            .unwrap();
-        store
-            .append_message(&session.id, MessageRole::User, "how are you")
-            .unwrap();
+        store.append_message(&session.id, MessageRole::User, "hello").unwrap();
+        store.append_message(&session.id, MessageRole::Assistant, "world").unwrap();
+        store.append_message(&session.id, MessageRole::User, "how are you").unwrap();
         let messages = store.get_messages(&session.id).unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].content, "hello");
@@ -358,10 +345,8 @@ mod tests {
     #[test]
     fn test_wal_mode() {
         let store = SessionStore::new_in_memory().unwrap();
-        let mode: String = store
-            .conn
-            .pragma_query_value(None, "journal_mode", |row| row.get(0))
-            .unwrap();
+        let mode: String =
+            store.conn.pragma_query_value(None, "journal_mode", |row| row.get(0)).unwrap();
         assert_eq!(mode, "memory");
     }
 
@@ -369,9 +354,7 @@ mod tests {
     fn test_delete_session() {
         let store = SessionStore::new_in_memory().unwrap();
         let session = store.create_session("test-model", "").unwrap();
-        store
-            .append_message(&session.id, MessageRole::User, "hello")
-            .unwrap();
+        store.append_message(&session.id, MessageRole::User, "hello").unwrap();
         store.delete_session(&session.id).unwrap();
         assert!(store.get_session(&session.id).unwrap().is_none());
         assert!(store.get_messages(&session.id).unwrap().is_empty());

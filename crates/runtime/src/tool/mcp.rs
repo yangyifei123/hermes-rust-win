@@ -57,16 +57,8 @@ impl Tool for McpTool {
 
 /// Perform a full MCP call: spawn server, handshake, invoke tool.
 async fn mcp_call(params: Value) -> Result<ToolOutput, RuntimeError> {
-    let server = params["server"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let tool_name = params["tool"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let server = params["server"].as_str().unwrap_or("").trim().to_string();
+    let tool_name = params["tool"].as_str().unwrap_or("").trim().to_string();
 
     if server.is_empty() {
         return Ok(ToolOutput::error("Missing required parameter: server"));
@@ -81,11 +73,7 @@ async fn mcp_call(params: Value) -> Result<ToolOutput, RuntimeError> {
     let extra_args: Vec<String> = params
         .get("args")
         .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
 
     // Spawn the MCP server process
@@ -163,11 +151,9 @@ async fn mcp_call(params: Value) -> Result<ToolOutput, RuntimeError> {
     // Parse the result
     match call_response {
         JsonRpcResponse::Result { result, .. } => Ok(format_tool_result(&result)),
-        JsonRpcResponse::Error { error, .. } => Ok(ToolOutput::error(format!(
-            "MCP server error [{}]: {}",
-            error.code,
-            error.message
-        ))),
+        JsonRpcResponse::Error { error, .. } => {
+            Ok(ToolOutput::error(format!("MCP server error [{}]: {}", error.code, error.message)))
+        }
     }
 }
 
@@ -178,29 +164,26 @@ fn format_tool_result(result: &Value) -> ToolOutput {
     if let Some(content_arr) = result.get("content").and_then(|c| c.as_array()) {
         let texts: Vec<String> = content_arr
             .iter()
-            .filter_map(|item| {
-                match item.get("type").and_then(|t| t.as_str()) {
-                    Some("text") => item.get("text").and_then(|t| t.as_str()).map(String::from),
-                    Some("image") => Some("[image content]".to_string()),
-                    Some("resource") => Some(
-                        item.get("resource")
-                            .and_then(|r| r.get("text"))
-                            .and_then(|t| t.as_str())
-                            .map(String::from)
-                            .unwrap_or_else(|| "[resource]".to_string()),
-                    ),
-                    _ => None,
-                }
+            .filter_map(|item| match item.get("type").and_then(|t| t.as_str()) {
+                Some("text") => item.get("text").and_then(|t| t.as_str()).map(String::from),
+                Some("image") => Some("[image content]".to_string()),
+                Some("resource") => Some(
+                    item.get("resource")
+                        .and_then(|r| r.get("text"))
+                        .and_then(|t| t.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| "[resource]".to_string()),
+                ),
+                _ => None,
             })
             .collect();
 
         if texts.is_empty() {
-            ToolOutput::success(serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string()))
+            ToolOutput::success(
+                serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string()),
+            )
         } else {
-            let is_error = result
-                .get("isError")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
             let combined = texts.join("\n");
             if is_error {
                 ToolOutput::error(combined)
@@ -210,7 +193,9 @@ fn format_tool_result(result: &Value) -> ToolOutput {
         }
     } else {
         // Fallback: just pretty-print whatever we got
-        ToolOutput::success(serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string()))
+        ToolOutput::success(
+            serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string()),
+        )
     }
 }
 
@@ -238,13 +223,10 @@ async fn send_jsonrpc(
         message: format!("Failed to serialize JSON-RPC message: {}", e),
     })?;
     line.push('\n');
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|e| RuntimeError::ToolError {
-            name: "mcp".into(),
-            message: format!("Failed to write to MCP server stdin: {}", e),
-        })?;
+    stdin.write_all(line.as_bytes()).await.map_err(|e| RuntimeError::ToolError {
+        name: "mcp".into(),
+        message: format!("Failed to write to MCP server stdin: {}", e),
+    })?;
     stdin.flush().await.map_err(|e| RuntimeError::ToolError {
         name: "mcp".into(),
         message: format!("Failed to flush MCP server stdin: {}", e),
@@ -259,15 +241,13 @@ async fn read_jsonrpc(
 ) -> Result<JsonRpcResponse, RuntimeError> {
     let mut line = String::new();
     // Read with a timeout so we don't hang forever
-    let read_result = tokio::time::timeout(std::time::Duration::from_secs(30), reader.read_line(&mut line))
-        .await
-        .map_err(|_| RuntimeError::ToolError {
-            name: "mcp".into(),
-            message: format!(
-                "Timeout waiting for MCP server response (id={})",
-                expected_id
-            ),
-        })?;
+    let read_result =
+        tokio::time::timeout(std::time::Duration::from_secs(30), reader.read_line(&mut line))
+            .await
+            .map_err(|_| RuntimeError::ToolError {
+                name: "mcp".into(),
+                message: format!("Timeout waiting for MCP server response (id={})", expected_id),
+            })?;
 
     match read_result {
         Ok(0) => {
@@ -291,24 +271,15 @@ async fn read_jsonrpc(
     })?;
 
     // Verify id
-    let id = msg
-        .get("id")
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| RuntimeError::ToolError {
-            name: "mcp".into(),
-            message: format!(
-                "JSON-RPC response missing 'id' field: {}",
-                line.trim()
-            ),
-        })?;
+    let id = msg.get("id").and_then(|v| v.as_u64()).ok_or_else(|| RuntimeError::ToolError {
+        name: "mcp".into(),
+        message: format!("JSON-RPC response missing 'id' field: {}", line.trim()),
+    })?;
 
     if id != expected_id {
         return Err(RuntimeError::ToolError {
             name: "mcp".into(),
-            message: format!(
-                "JSON-RPC response id mismatch: expected {}, got {}",
-                expected_id, id
-            ),
+            message: format!("JSON-RPC response id mismatch: expected {}, got {}", expected_id, id),
         });
     }
 
@@ -317,10 +288,7 @@ async fn read_jsonrpc(
         Ok(JsonRpcResponse::Error {
             id,
             error: JsonRpcError {
-                code: error
-                    .get("code")
-                    .and_then(|c| c.as_i64())
-                    .unwrap_or(-1),
+                code: error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1),
                 message: error
                     .get("message")
                     .and_then(|m| m.as_str())
@@ -343,10 +311,7 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_missing_server_param() {
         let tool = McpTool;
-        let result = tool
-            .execute(json!({"tool": "some_tool"}))
-            .await
-            .unwrap();
+        let result = tool.execute(json!({"tool": "some_tool"})).await.unwrap();
         assert!(result.is_error);
         assert!(
             result.content.contains("Missing required parameter: server"),
@@ -358,10 +323,7 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_missing_tool_param() {
         let tool = McpTool;
-        let result = tool
-            .execute(json!({"server": "some_server"}))
-            .await
-            .unwrap();
+        let result = tool.execute(json!({"server": "some_server"})).await.unwrap();
         assert!(result.is_error);
         assert!(
             result.content.contains("Missing required parameter: tool"),
@@ -374,7 +336,9 @@ mod tests {
     async fn test_mcp_nonexistent_server() {
         let tool = McpTool;
         let result = tool
-            .execute(json!({"server": "definitely_not_a_real_mcp_server_binary_xyz", "tool": "test"}))
+            .execute(
+                json!({"server": "definitely_not_a_real_mcp_server_binary_xyz", "tool": "test"}),
+            )
             .await;
         // Should fail with a ToolError about spawning
         assert!(result.is_err());

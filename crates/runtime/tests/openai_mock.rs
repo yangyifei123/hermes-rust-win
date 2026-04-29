@@ -51,11 +51,7 @@ async fn test_openai_chat_completion_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     let response = provider.chat_completion(basic_request()).await.unwrap();
     assert_eq!(response.choices.len(), 1);
@@ -75,19 +71,13 @@ async fn test_openai_error_handling_mock() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "error": {"message": "Invalid API key", "type": "invalid_request_error"}
-            })),
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "error": {"message": "Invalid API key", "type": "invalid_request_error"}
+        })))
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "bad-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "bad-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
@@ -112,11 +102,7 @@ async fn test_openai_not_found_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
@@ -143,11 +129,7 @@ async fn test_openai_rate_limit_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
@@ -172,11 +154,7 @@ async fn test_openai_server_error_retry_exhausted_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     let result = provider.chat_completion(basic_request()).await;
     assert!(result.is_err());
@@ -217,11 +195,7 @@ async fn test_openai_tool_calls_response_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     let response = provider.chat_completion(basic_request()).await.unwrap();
     assert_eq!(response.choices.len(), 1);
@@ -231,14 +205,8 @@ async fn test_openai_tool_calls_response_mock() {
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0].id, "call_abc123");
     assert_eq!(tool_calls[0].function.name, "read_file");
-    assert_eq!(
-        tool_calls[0].function.arguments,
-        r#"{"path": "/tmp/test.txt"}"#
-    );
-    assert_eq!(
-        response.choices[0].finish_reason.as_deref(),
-        Some("tool_calls")
-    );
+    assert_eq!(tool_calls[0].function.arguments, r#"{"path": "/tmp/test.txt"}"#);
+    assert_eq!(response.choices[0].finish_reason.as_deref(), Some("tool_calls"));
 }
 
 #[tokio::test]
@@ -251,11 +219,7 @@ async fn test_openai_empty_model_uses_default() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::OpenAI,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::OpenAI, "test-key", Some(&mock_server.uri()));
 
     // Empty model string should fall back to the provider's default
     let request = ChatRequest {
@@ -289,11 +253,7 @@ async fn test_deepseek_provider_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::DeepSeek,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::DeepSeek, "test-key", Some(&mock_server.uri()));
 
     let response = provider.chat_completion(basic_request()).await.unwrap();
     assert_eq!(response.choices[0].message.text(), "DeepSeek response");
@@ -316,11 +276,7 @@ async fn test_groq_provider_mock() {
         .mount(&mock_server)
         .await;
 
-    let provider = create_provider(
-        &Provider::Groq,
-        "test-key",
-        Some(&mock_server.uri()),
-    );
+    let provider = create_provider(&Provider::Groq, "test-key", Some(&mock_server.uri()));
 
     let response = provider.chat_completion(basic_request()).await.unwrap();
     assert_eq!(response.choices[0].message.text(), "Groq fast response");

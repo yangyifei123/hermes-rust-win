@@ -1,13 +1,15 @@
 //! Agent core loop - orchestrates LLM calls, tool dispatch, and session persistence
 
-use crate::provider::{ChatMessage, ChatRequest, ChatResponse, LlmProvider, ToolCall as ProviderToolCall};
+use crate::provider::{
+    ChatMessage, ChatRequest, ChatResponse, LlmProvider, ToolCall as ProviderToolCall,
+};
 use crate::tool::ToolRegistry;
 use crate::usage::UsageAccumulator;
 use crate::RuntimeError;
 use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
-use hermes_session_db::{SessionStore, Message, MessageRole};
+use hermes_session_db::{Message, MessageRole, SessionStore};
 use serde_json::json;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -23,9 +25,9 @@ pub struct AgentConfig {
     pub max_turns: u32,
     pub system_prompt: String,
     pub timeout_secs: u64,
-    pub yolo: bool,  // Skip approval for dangerous commands
-    pub max_context_tokens: usize,  // Max tokens before truncation
-    pub streaming: bool,  // Use SSE streaming when available
+    pub yolo: bool,                // Skip approval for dangerous commands
+    pub max_context_tokens: usize, // Max tokens before truncation
+    pub streaming: bool,           // Use SSE streaming when available
 }
 
 impl Default for AgentConfig {
@@ -119,9 +121,7 @@ impl Agent {
         let session = self
             .session_store
             .create_session(&self.model, &self.config.system_prompt)
-            .map_err(|e| RuntimeError::SessionError {
-                source: Box::new(e),
-            })?;
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
         Ok(session.id)
     }
 
@@ -130,14 +130,9 @@ impl Agent {
         let session = self
             .session_store
             .get_session(&session_id)
-            .map_err(|e| RuntimeError::SessionError {
-                source: Box::new(e),
-            })?;
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
         if session.is_none() {
-            return Err(RuntimeError::NotFound(format!(
-                "session {} not found",
-                session_id
-            )));
+            return Err(RuntimeError::NotFound(format!("session {} not found", session_id)));
         }
         Ok(())
     }
@@ -147,9 +142,7 @@ impl Agent {
         let messages = self
             .session_store
             .get_messages(session_id)
-            .map_err(|e| RuntimeError::SessionError {
-                source: Box::new(e),
-            })?;
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
 
         let mut chat_messages = Vec::new();
 
@@ -175,7 +168,8 @@ impl Agent {
 
         // Truncate if over token limit using model-specific tokenizer
         let registry = self.tokenizer_registry();
-        chat_messages = registry.truncate_messages(&self.model, chat_messages, self.config.max_context_tokens);
+        chat_messages =
+            registry.truncate_messages(&self.model, chat_messages, self.config.max_context_tokens);
 
         Ok(chat_messages)
     }
@@ -189,9 +183,7 @@ impl Agent {
     ) -> Result<Message, RuntimeError> {
         self.session_store
             .append_message(session_id, role, content)
-            .map_err(|e| RuntimeError::SessionError {
-                source: Box::new(e),
-            })
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })
     }
 
     /// Run a single query and return the response (one-shot mode)
@@ -237,11 +229,7 @@ impl Agent {
             let request = ChatRequest {
                 model: self.model.clone(),
                 messages,
-                tools: if tool_defs.is_empty() {
-                    None
-                } else {
-                    Some(json!(tool_defs))
-                },
+                tools: if tool_defs.is_empty() { None } else { Some(json!(tool_defs)) },
                 max_tokens: Some(4096),
                 temperature: Some(0.7),
                 stream: if self.config.streaming { Some(true) } else { None },
@@ -253,12 +241,12 @@ impl Agent {
                 let stream_result = tokio::time::timeout(
                     std::time::Duration::from_secs(self.config.timeout_secs),
                     self.provider.chat_completion_stream(request),
-                ).await;
+                )
+                .await;
 
-                let mut stream = stream_result
-                    .map_err(|_| RuntimeError::TimeoutError {
-                        duration_secs: self.config.timeout_secs,
-                    })??;
+                let mut stream = stream_result.map_err(|_| RuntimeError::TimeoutError {
+                    duration_secs: self.config.timeout_secs,
+                })??;
 
                 // Collect all chunks into a single response
                 let mut full_content = String::new();
@@ -279,9 +267,10 @@ impl Agent {
                                 // Accumulate tool call deltas
                                 if let Some(ref tool_calls) = choice.delta.tool_calls {
                                     for tc_delta in tool_calls {
-                                        let entry = tool_call_parts
-                                            .entry(tc_delta.index)
-                                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                        let entry =
+                                            tool_call_parts.entry(tc_delta.index).or_insert_with(
+                                                || (String::new(), String::new(), String::new()),
+                                            );
                                         if let Some(ref id) = tc_delta.id {
                                             entry.0 = id.clone();
                                         }
@@ -302,12 +291,12 @@ impl Agent {
                         }
                         Ok::<(), RuntimeError>(())
                     },
-                ).await;
+                )
+                .await;
 
-                collect_result
-                    .map_err(|_| RuntimeError::TimeoutError {
-                        duration_secs: self.config.timeout_secs,
-                    })??;
+                collect_result.map_err(|_| RuntimeError::TimeoutError {
+                    duration_secs: self.config.timeout_secs,
+                })??;
 
                 // Reconstruct tool calls from accumulated parts
                 let mut tool_calls: Vec<ProviderToolCall> = Vec::new();
@@ -334,10 +323,7 @@ impl Agent {
                 };
 
                 ChatResponse {
-                    choices: vec![crate::provider::ChatChoice {
-                        message,
-                        finish_reason,
-                    }],
+                    choices: vec![crate::provider::ChatChoice { message, finish_reason }],
                     usage: None,
                 }
             } else {
@@ -379,7 +365,9 @@ impl Agent {
 
                             // Parse arguments JSON — on failure, store error as tool result
                             // so the LLM can see what went wrong and retry with valid JSON.
-                            let params: serde_json::Value = match serde_json::from_str(&tc.function.arguments) {
+                            let params: serde_json::Value = match serde_json::from_str(
+                                &tc.function.arguments,
+                            ) {
                                 Ok(v) => v,
                                 Err(parse_err) => {
                                     let error_msg = format!(
@@ -390,7 +378,9 @@ impl Agent {
                                     // Store the parse error as a tool result so LLM sees it
                                     self.session_store
                                         .append_message(&session_id, MessageRole::Tool, &error_msg)
-                                        .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
+                                        .map_err(|e| RuntimeError::SessionError {
+                                            source: Box::new(e),
+                                        })?;
                                     // Continue to next tool call
                                     continue;
                                 }
@@ -402,8 +392,10 @@ impl Agent {
                                 self.tools.dispatch(&tc.function.name, params),
                             )
                             .await
-                            .map_err(|_| RuntimeError::TimeoutError {
-                                duration_secs: self.config.timeout_secs,
+                            .map_err(|_| {
+                                RuntimeError::TimeoutError {
+                                    duration_secs: self.config.timeout_secs,
+                                }
                             })??;
 
                             // Store tool result with tool_call_id in tool_name field
@@ -415,7 +407,8 @@ impl Agent {
                             } else {
                                 tool_result.content
                             };
-                            store.append_message(&sid, MessageRole::Tool, &result_content)
+                            store
+                                .append_message(&sid, MessageRole::Tool, &result_content)
                                 .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
 
                             // Update tool_name to store tool_call_id for message reconstruction
@@ -465,11 +458,7 @@ impl Agent {
         let result = self.tools.dispatch(tool_name, params).await?;
 
         // Append tool result to session
-        self.append_message(
-            session_id,
-            MessageRole::Tool,
-            &result.content,
-        )?;
+        self.append_message(session_id, MessageRole::Tool, &result.content)?;
 
         Ok(result.content)
     }
@@ -483,9 +472,7 @@ impl Agent {
     pub fn get_history(&self, session_id: &Uuid) -> Result<Vec<Message>, RuntimeError> {
         self.session_store
             .get_messages(session_id)
-            .map_err(|e| RuntimeError::SessionError {
-                source: Box::new(e),
-            })
+            .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })
     }
 
     /// Get current model name
@@ -514,8 +501,18 @@ impl Agent {
     /// exhaustive — it covers the most popular models across providers.
     pub fn known_models() -> Vec<(&'static str, Vec<&'static str>)> {
         vec![
-            ("openai", vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini"]),
-            ("anthropic", vec!["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"]),
+            (
+                "openai",
+                vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini"],
+            ),
+            (
+                "anthropic",
+                vec![
+                    "claude-opus-4-20250514",
+                    "claude-sonnet-4-20250514",
+                    "claude-3-5-haiku-20241022",
+                ],
+            ),
             ("deepseek", vec!["deepseek-chat", "deepseek-reasoner"]),
             ("groq", vec!["llama-3.1-70b-versatile", "mixtral-8x7b-32768"]),
             ("gemini", vec!["gemini-2.5-pro", "gemini-2.0-flash"]),
@@ -531,7 +528,11 @@ impl Agent {
     /// Compact session by truncating middle messages, keeping system + recent context.
     ///
     /// Returns (before_count, after_count, tokens_saved_estimate).
-    pub fn compact_session(&self, session_id: &Uuid, keep_recent: usize) -> Result<(usize, usize, usize), RuntimeError> {
+    pub fn compact_session(
+        &self,
+        session_id: &Uuid,
+        keep_recent: usize,
+    ) -> Result<(usize, usize, usize), RuntimeError> {
         let messages = self.get_history(session_id)?;
         let before = messages.len();
 
@@ -540,19 +541,23 @@ impl Agent {
 
         // Count tokens before
         let registry = self.tokenizer_registry();
-        let chat_msgs: Vec<ChatMessage> = messages.iter().map(|m| match m.role {
-            MessageRole::System => ChatMessage::system(&m.content),
-            MessageRole::User => ChatMessage::user(&m.content),
-            MessageRole::Assistant => ChatMessage::assistant(&m.content),
-            MessageRole::Tool => ChatMessage::tool_result(
-                m.tool_name.as_deref().unwrap_or("unknown"),
-                &m.content,
-            ),
-        }).collect();
+        let chat_msgs: Vec<ChatMessage> = messages
+            .iter()
+            .map(|m| match m.role {
+                MessageRole::System => ChatMessage::system(&m.content),
+                MessageRole::User => ChatMessage::user(&m.content),
+                MessageRole::Assistant => ChatMessage::assistant(&m.content),
+                MessageRole::Tool => ChatMessage::tool_result(
+                    m.tool_name.as_deref().unwrap_or("unknown"),
+                    &m.content,
+                ),
+            })
+            .collect();
         let tokens_before = registry.count_messages(&self.model, &chat_msgs);
 
         // Truncate: keep system messages + last N
-        let deleted = self.session_store
+        let deleted = self
+            .session_store
             .truncate_messages(session_id, system_count, keep_recent)
             .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
 
@@ -560,15 +565,18 @@ impl Agent {
 
         // Estimate tokens after
         let after_msgs = self.get_history(session_id)?;
-        let after_chat: Vec<ChatMessage> = after_msgs.iter().map(|m| match m.role {
-            MessageRole::System => ChatMessage::system(&m.content),
-            MessageRole::User => ChatMessage::user(&m.content),
-            MessageRole::Assistant => ChatMessage::assistant(&m.content),
-            MessageRole::Tool => ChatMessage::tool_result(
-                m.tool_name.as_deref().unwrap_or("unknown"),
-                &m.content,
-            ),
-        }).collect();
+        let after_chat: Vec<ChatMessage> = after_msgs
+            .iter()
+            .map(|m| match m.role {
+                MessageRole::System => ChatMessage::system(&m.content),
+                MessageRole::User => ChatMessage::user(&m.content),
+                MessageRole::Assistant => ChatMessage::assistant(&m.content),
+                MessageRole::Tool => ChatMessage::tool_result(
+                    m.tool_name.as_deref().unwrap_or("unknown"),
+                    &m.content,
+                ),
+            })
+            .collect();
         let tokens_after = registry.count_messages(&self.model, &after_chat);
 
         Ok((before, after, tokens_before.saturating_sub(tokens_after)))
@@ -631,14 +639,10 @@ impl Agent {
             self.provider.chat_completion(request),
         )
         .await
-        .map_err(|_| RuntimeError::TimeoutError { duration_secs: self.config.timeout_secs })?
-        ?;
+        .map_err(|_| RuntimeError::TimeoutError { duration_secs: self.config.timeout_secs })??;
 
-        let summary = response
-            .choices
-            .first()
-            .map(|c| c.message.text().to_string())
-            .unwrap_or_default();
+        let summary =
+            response.choices.first().map(|c| c.message.text().to_string()).unwrap_or_default();
 
         // Delete old messages
         self.session_store
@@ -652,11 +656,8 @@ impl Agent {
             .map_err(|e| RuntimeError::SessionError { source: Box::new(e) })?;
 
         let after = self.get_history(session_id)?.len();
-        let summary_preview = if summary.len() > 200 {
-            format!("{}...", &summary[..200])
-        } else {
-            summary
-        };
+        let summary_preview =
+            if summary.len() > 200 { format!("{}...", &summary[..200]) } else { summary };
 
         Ok((before, after, summary_preview))
     }
@@ -713,11 +714,7 @@ impl Agent {
         let request = ChatRequest {
             model: self.model.clone(),
             messages,
-            tools: if tool_defs.is_empty() {
-                None
-            } else {
-                Some(json!(tool_defs))
-            },
+            tools: if tool_defs.is_empty() { None } else { Some(json!(tool_defs)) },
             max_tokens: Some(4096),
             temperature: Some(0.7),
             stream: Some(true),
@@ -737,83 +734,80 @@ impl Agent {
             match stream_result {
                 Ok(Ok(sse_stream)) => Ok(sse_stream),
                 Ok(Err(e)) => Err(e),
-                Err(_) => Err(RuntimeError::TimeoutError {
-                    duration_secs: timeout_secs,
-                }),
+                Err(_) => Err(RuntimeError::TimeoutError { duration_secs: timeout_secs }),
             }
         })
         .try_flatten()
-        .scan(
-            HashMap::<u32, (String, String, String)>::new(),
-            |tool_call_parts, chunk_result| {
-                let mut events = Vec::new();
+        .scan(HashMap::<u32, (String, String, String)>::new(), |tool_call_parts, chunk_result| {
+            let mut events = Vec::new();
 
-                match chunk_result {
-                    Ok(chunk) => {
-                        if let Some(choice) = chunk.choices.first() {
-                            // Emit text content delta
-                            if let Some(ref content) = choice.delta.content {
-                                if !content.is_empty() {
-                                    events.push(Ok(StreamEvent::Delta(content.clone())));
-                                }
+            match chunk_result {
+                Ok(chunk) => {
+                    if let Some(choice) = chunk.choices.first() {
+                        // Emit text content delta
+                        if let Some(ref content) = choice.delta.content {
+                            if !content.is_empty() {
+                                events.push(Ok(StreamEvent::Delta(content.clone())));
                             }
+                        }
 
-                            // Handle tool call deltas
-                            if let Some(ref tool_calls) = choice.delta.tool_calls {
-                                for tc_delta in tool_calls {
-                                    let entry = tool_call_parts
-                                        .entry(tc_delta.index)
-                                        .or_insert_with(|| (String::new(), String::new(), String::new()));
-                                    if let Some(ref id) = tc_delta.id {
-                                        entry.0 = id.clone();
+                        // Handle tool call deltas
+                        if let Some(ref tool_calls) = choice.delta.tool_calls {
+                            for tc_delta in tool_calls {
+                                let entry =
+                                    tool_call_parts.entry(tc_delta.index).or_insert_with(|| {
+                                        (String::new(), String::new(), String::new())
+                                    });
+                                if let Some(ref id) = tc_delta.id {
+                                    entry.0 = id.clone();
+                                }
+                                if let Some(ref func) = tc_delta.function {
+                                    if let Some(ref name) = func.name {
+                                        // Tool call start — emit event
+                                        events.push(Ok(StreamEvent::ToolCallStart {
+                                            name: name.clone(),
+                                        }));
+                                        entry.1 = name.clone();
                                     }
-                                    if let Some(ref func) = tc_delta.function {
-                                        if let Some(ref name) = func.name {
-                                            // Tool call start — emit event
-                                            events.push(Ok(StreamEvent::ToolCallStart {
-                                                name: name.clone(),
-                                            }));
-                                            entry.1 = name.clone();
-                                        }
-                                        if let Some(ref args) = func.arguments {
-                                            entry.2.push_str(args);
-                                        }
+                                    if let Some(ref args) = func.arguments {
+                                        entry.2.push_str(args);
                                     }
                                 }
                             }
+                        }
 
-                            // If stream finished with tool_calls reason, emit complete event
-                            if choice.finish_reason.as_deref() == Some("tool_calls")
-                                && !tool_call_parts.is_empty() {
-                                    let mut indices: Vec<u32> = tool_call_parts.keys().copied().collect();
-                                    indices.sort();
-                                    let completed: Vec<ProviderToolCall> = indices
-                                        .iter()
-                                        .map(|&idx| {
-                                            let (id, name, arguments) = &tool_call_parts[&idx];
-                                            ProviderToolCall {
-                                                id: id.clone(),
-                                                tool_type: "function".to_string(),
-                                                function: crate::provider::FunctionCall {
-                                                    name: name.clone(),
-                                                    arguments: arguments.clone(),
-                                                },
-                                            }
-                                        })
-                                        .collect();
-                                    events.push(Ok(StreamEvent::ToolCallsComplete(completed)));
-                                    tool_call_parts.clear();
-                                }
+                        // If stream finished with tool_calls reason, emit complete event
+                        if choice.finish_reason.as_deref() == Some("tool_calls")
+                            && !tool_call_parts.is_empty()
+                        {
+                            let mut indices: Vec<u32> = tool_call_parts.keys().copied().collect();
+                            indices.sort();
+                            let completed: Vec<ProviderToolCall> = indices
+                                .iter()
+                                .map(|&idx| {
+                                    let (id, name, arguments) = &tool_call_parts[&idx];
+                                    ProviderToolCall {
+                                        id: id.clone(),
+                                        tool_type: "function".to_string(),
+                                        function: crate::provider::FunctionCall {
+                                            name: name.clone(),
+                                            arguments: arguments.clone(),
+                                        },
+                                    }
+                                })
+                                .collect();
+                            events.push(Ok(StreamEvent::ToolCallsComplete(completed)));
+                            tool_call_parts.clear();
                         }
                     }
-                    Err(e) => {
-                        events.push(Err(e));
-                    }
                 }
+                Err(e) => {
+                    events.push(Err(e));
+                }
+            }
 
-                std::future::ready(Some(events))
-            },
-        )
+            std::future::ready(Some(events))
+        })
         .map(futures::stream::iter)
         .flatten();
 
@@ -824,7 +818,7 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{ChatRequest, ChatResponse, ChatChoice, ChatMessage, StreamChunk};
+    use crate::provider::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, StreamChunk};
     use crate::tool::{Tool, ToolOutput};
     use futures::Stream;
     use hermes_session_db::SessionStore;
@@ -841,18 +835,20 @@ mod tests {
 
     impl MockProvider {
         fn new(responses: Vec<String>) -> Self {
-            Self {
-                responses,
-                call_count: AtomicU32::new(0),
-            }
+            Self { responses, call_count: AtomicU32::new(0) }
         }
     }
 
     impl LlmProvider for MockProvider {
-        fn chat_completion(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
+        fn chat_completion(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
             Box::pin(async move {
                 let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let content = self.responses.get(idx as usize)
+                let content = self
+                    .responses
+                    .get(idx as usize)
                     .cloned()
                     .unwrap_or_else(|| "Default mock response".to_string());
                 Ok(ChatResponse {
@@ -865,7 +861,20 @@ mod tests {
             })
         }
 
-        fn chat_completion_stream(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
+        fn chat_completion_stream(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = Result<
+                            Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>,
+                            RuntimeError,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > {
             Box::pin(async move {
                 Err(RuntimeError::ProviderError {
                     message: "Streaming not supported in mock".to_string(),
@@ -873,20 +882,31 @@ mod tests {
             })
         }
 
-        fn name(&self) -> &str { "mock" }
-        fn default_model(&self) -> &str { "mock-model" }
+        fn name(&self) -> &str {
+            "mock"
+        }
+        fn default_model(&self) -> &str {
+            "mock-model"
+        }
     }
 
     // Mock tool
     struct MockTool;
 
     impl Tool for MockTool {
-        fn name(&self) -> &str { "mock_tool" }
-        fn description(&self) -> &str { "A mock tool for testing" }
+        fn name(&self) -> &str {
+            "mock_tool"
+        }
+        fn description(&self) -> &str {
+            "A mock tool for testing"
+        }
         fn parameters_schema(&self) -> serde_json::Value {
             json!({ "type": "object", "properties": {} })
         }
-        fn execute(&self, _params: serde_json::Value) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
+        fn execute(
+            &self,
+            _params: serde_json::Value,
+        ) -> Pin<Box<dyn Future<Output = Result<ToolOutput, RuntimeError>> + Send + '_>> {
             Box::pin(async move { Ok(ToolOutput::success("mock tool result")) })
         }
     }
@@ -968,11 +988,16 @@ mod tests {
     }
 
     impl MockProviderBadToolArgs {
-        fn new() -> Self { Self { call_count: AtomicU32::new(0) } }
+        fn new() -> Self {
+            Self { call_count: AtomicU32::new(0) }
+        }
     }
 
     impl LlmProvider for MockProviderBadToolArgs {
-        fn chat_completion(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
+        fn chat_completion(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
             Box::pin(async move {
                 let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if idx == 0 {
@@ -1010,12 +1035,29 @@ mod tests {
             })
         }
 
-        fn chat_completion_stream(&self, _request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
+        fn chat_completion_stream(
+            &self,
+            _request: ChatRequest,
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = Result<
+                            Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>,
+                            RuntimeError,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > {
             Box::pin(async { Err(RuntimeError::ProviderError { message: "no stream".into() }) })
         }
 
-        fn name(&self) -> &str { "mock_bad_args" }
-        fn default_model(&self) -> &str { "mock" }
+        fn name(&self) -> &str {
+            "mock_bad_args"
+        }
+        fn default_model(&self) -> &str {
+            "mock"
+        }
     }
 
     #[tokio::test]
@@ -1036,12 +1078,12 @@ mod tests {
 
         // The session should contain a Tool message with the parse error
         let messages = agent.get_history(&session_id).unwrap();
-        let tool_msgs: Vec<_> = messages.iter()
-            .filter(|m| m.role == MessageRole::Tool)
-            .collect();
+        let tool_msgs: Vec<_> = messages.iter().filter(|m| m.role == MessageRole::Tool).collect();
         assert!(!tool_msgs.is_empty(), "Expected at least one tool message with parse error");
         assert!(
-            tool_msgs.iter().any(|m| m.content.contains("JSON parse error") || m.content.contains("parse error")),
+            tool_msgs.iter().any(
+                |m| m.content.contains("JSON parse error") || m.content.contains("parse error")
+            ),
             "Tool message should contain parse error info"
         );
     }

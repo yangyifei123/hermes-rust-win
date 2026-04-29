@@ -17,10 +17,8 @@ use serde_json::Value;
 /// - `"number"` → parse as `f64`
 /// - `"boolean"` → parse `"true"/"yes"/"1"` as true, `"false"/"no"/"0"` as false
 pub fn coerce_args(schema: &Value, args: &mut Value) {
-    let properties = schema
-        .get("parameters")
-        .and_then(|p| p.get("properties"))
-        .and_then(|p| p.as_object());
+    let properties =
+        schema.get("parameters").and_then(|p| p.get("properties")).and_then(|p| p.as_object());
 
     if properties.is_none() || !args.is_object() {
         return;
@@ -97,10 +95,7 @@ mod tests {
         });
         let mut args = json!({"ratio": "3.14"});
         coerce_args(&schema, &mut args);
-        assert_eq!(
-            args["ratio"],
-            Value::Number(serde_json::Number::from_f64(3.14).unwrap())
-        );
+        assert_eq!(args["ratio"], Value::Number(serde_json::Number::from_f64(3.14).unwrap()));
     }
 
     #[test]
@@ -133,12 +128,7 @@ mod tests {
         for val in &["false", "no", "0", "False", "NO"] {
             let mut args = json!({"flag": *val});
             coerce_args(&schema, &mut args);
-            assert_eq!(
-                args["flag"],
-                Value::Bool(false),
-                "Failed for input: {}",
-                val
-            );
+            assert_eq!(args["flag"], Value::Bool(false), "Failed for input: {}", val);
         }
     }
 
@@ -220,10 +210,7 @@ mod tests {
         });
         coerce_args(&schema, &mut args);
         assert_eq!(args["count"], Value::Number(10i64.into()));
-        assert_eq!(
-            args["ratio"],
-            Value::Number(serde_json::Number::from_f64(2.5).unwrap())
-        );
+        assert_eq!(args["ratio"], Value::Number(serde_json::Number::from_f64(2.5).unwrap()));
         assert_eq!(args["enabled"], Value::Bool(true));
         assert_eq!(args["name"], Value::String("test".to_string()));
     }

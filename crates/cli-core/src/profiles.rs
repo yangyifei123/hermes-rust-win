@@ -100,10 +100,7 @@ pub fn rename_profile(old_name: &str, new_name: &str) -> Result<()> {
     }
 
     fs::rename(&old_path, &new_path).with_context(|| {
-        format!(
-            "failed to rename profile from {:?} to {:?}",
-            old_path, new_path
-        )
+        format!("failed to rename profile from {:?} to {:?}", old_path, new_path)
     })?;
     Ok(())
 }

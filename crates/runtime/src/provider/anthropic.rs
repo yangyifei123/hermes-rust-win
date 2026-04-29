@@ -1,5 +1,8 @@
-use crate::provider::{ChatRequest, ChatResponse, DeltaMessage, FunctionCallDelta, LlmProvider, StreamChunk, StreamChoice, ToolCallDelta};
-use crate::provider::retry::{RetryPolicy, with_retry};
+use crate::provider::retry::{with_retry, RetryPolicy};
+use crate::provider::{
+    ChatRequest, ChatResponse, DeltaMessage, FunctionCallDelta, LlmProvider, StreamChoice,
+    StreamChunk, ToolCallDelta,
+};
 use crate::RuntimeError;
 use futures::stream::StreamExt;
 use futures::Stream;
@@ -64,7 +67,9 @@ struct AnthropicSseEvent {
 
 /// Parse an Anthropic SSE event into a StreamChunk (if it carries content).
 /// Returns `None` for non-content events (ping, message_start, etc.).
-fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamChunk, RuntimeError>> {
+fn parse_anthropic_sse_event(
+    event: &AnthropicSseEvent,
+) -> Option<Result<StreamChunk, RuntimeError>> {
     match event.event_type {
         AnthropicEventType::ContentBlockDelta => {
             // Could be text_delta or input_json_delta (for tool args)
@@ -106,10 +111,7 @@ fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamC
                 let text = delta_obj["text"].as_str().unwrap_or("");
                 Some(Ok(StreamChunk {
                     choices: vec![StreamChoice {
-                        delta: DeltaMessage {
-                            content: Some(text.to_string()),
-                            tool_calls: None,
-                        },
+                        delta: DeltaMessage { content: Some(text.to_string()), tool_calls: None },
                         finish_reason: None,
                     }],
                 }))
@@ -168,20 +170,14 @@ fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamC
             if stop_reason == "tool_use" {
                 Some(Ok(StreamChunk {
                     choices: vec![StreamChoice {
-                        delta: DeltaMessage {
-                            content: None,
-                            tool_calls: None,
-                        },
+                        delta: DeltaMessage { content: None, tool_calls: None },
                         finish_reason: Some("tool_calls".to_string()),
                     }],
                 }))
             } else if !stop_reason.is_empty() {
                 Some(Ok(StreamChunk {
                     choices: vec![StreamChoice {
-                        delta: DeltaMessage {
-                            content: None,
-                            tool_calls: None,
-                        },
+                        delta: DeltaMessage { content: None, tool_calls: None },
                         finish_reason: Some(stop_reason.to_string()),
                     }],
                 }))
@@ -189,11 +185,9 @@ fn parse_anthropic_sse_event(event: &AnthropicSseEvent) -> Option<Result<StreamC
                 None
             }
         }
-        AnthropicEventType::Error => {
-            Some(Err(RuntimeError::ProviderError {
-                message: format!("Anthropic stream error: {}", event.data),
-            }))
-        }
+        AnthropicEventType::Error => Some(Err(RuntimeError::ProviderError {
+            message: format!("Anthropic stream error: {}", event.data),
+        })),
         // message_start, content_block_stop, message_stop, ping, unknown — skip these
         _ => None,
     }
@@ -208,10 +202,7 @@ struct SseParserState {
 
 impl SseParserState {
     fn new() -> Self {
-        Self {
-            current_event_type: None,
-            current_data: None,
-        }
+        Self { current_event_type: None, current_data: None }
     }
 
     /// Process raw SSE text. Returns complete events and leaves incomplete data in the buffer.
@@ -249,7 +240,11 @@ impl SseParserState {
 }
 
 impl LlmProvider for AnthropicProvider {
-    fn chat_completion(&self, mut request: ChatRequest) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>> {
+    fn chat_completion(
+        &self,
+        mut request: ChatRequest,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>>
+    {
         Box::pin(async move {
             if request.model.is_empty() {
                 request.model = self.model.clone();
@@ -336,14 +331,25 @@ impl LlmProvider for AnthropicProvider {
                         })
                     }
                 }
-            }).await
+            })
+            .await
         })
     }
 
     fn chat_completion_stream(
         &self,
         mut request: ChatRequest,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>> {
+    ) -> Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>,
+                        RuntimeError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
         Box::pin(async move {
             if request.model.is_empty() {
                 request.model = self.model.clone();
@@ -401,7 +407,8 @@ impl LlmProvider for AnthropicProvider {
                         })
                     }
                 }
-            }).await?;
+            })
+            .await?;
 
             let parser_state = SseParserState::new();
             let buffer = String::new();
@@ -412,26 +419,27 @@ impl LlmProvider for AnthropicProvider {
                     let chunk = match chunk_result {
                         Ok(c) => c,
                         Err(e) => {
-                            return std::future::ready(Some(vec![Err(RuntimeError::ProviderError {
-                                message: format!("Anthropic stream read error: {e}"),
-                            })]));
+                            return std::future::ready(Some(vec![Err(
+                                RuntimeError::ProviderError {
+                                    message: format!("Anthropic stream read error: {e}"),
+                                },
+                            )]));
                         }
                     };
 
                     let text = String::from_utf8_lossy(&chunk);
                     let events = state.process(buffer, &text);
 
-                    let results: Vec<Result<StreamChunk, RuntimeError>> = events
-                        .iter()
-                        .filter_map(parse_anthropic_sse_event)
-                        .collect();
+                    let results: Vec<Result<StreamChunk, RuntimeError>> =
+                        events.iter().filter_map(parse_anthropic_sse_event).collect();
 
                     std::future::ready(Some(results))
                 })
                 .map(futures::stream::iter)
                 .flatten();
 
-            Ok(Box::pin(stream) as Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>)
+            Ok(Box::pin(stream)
+                as Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>)
         })
     }
 
@@ -465,11 +473,17 @@ mod tests {
     #[test]
     fn test_anthropic_event_type_from_str() {
         assert_eq!(AnthropicEventType::from_str("message_start"), AnthropicEventType::MessageStart);
-        assert_eq!(AnthropicEventType::from_str("content_block_delta"), AnthropicEventType::ContentBlockDelta);
+        assert_eq!(
+            AnthropicEventType::from_str("content_block_delta"),
+            AnthropicEventType::ContentBlockDelta
+        );
         assert_eq!(AnthropicEventType::from_str("message_stop"), AnthropicEventType::MessageStop);
         assert_eq!(AnthropicEventType::from_str("ping"), AnthropicEventType::Ping);
         assert_eq!(AnthropicEventType::from_str("error"), AnthropicEventType::Error);
-        assert!(matches!(AnthropicEventType::from_str("custom_event"), AnthropicEventType::Unknown(_)));
+        assert!(matches!(
+            AnthropicEventType::from_str("custom_event"),
+            AnthropicEventType::Unknown(_)
+        ));
     }
 
     #[test]
@@ -485,10 +499,8 @@ mod tests {
 
     #[test]
     fn test_parse_anthropic_ping_ignored() {
-        let event = AnthropicSseEvent {
-            event_type: AnthropicEventType::Ping,
-            data: "{}".to_string(),
-        };
+        let event =
+            AnthropicSseEvent { event_type: AnthropicEventType::Ping, data: "{}".to_string() };
         assert!(parse_anthropic_sse_event(&event).is_none());
     }
 
@@ -514,7 +526,8 @@ mod tests {
     fn test_parse_anthropic_error_event() {
         let event = AnthropicSseEvent {
             event_type: AnthropicEventType::Error,
-            data: r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.to_string(),
+            data: r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#
+                .to_string(),
         };
         let result = parse_anthropic_sse_event(&event).unwrap();
         assert!(result.is_err());

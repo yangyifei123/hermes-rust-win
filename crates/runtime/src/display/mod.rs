@@ -42,11 +42,7 @@ impl Default for MarkdownRenderer {
 
 impl MarkdownRenderer {
     pub fn new() -> Self {
-        Self {
-            in_code_block: false,
-            code_fence: String::new(),
-            supports_color: true,
-        }
+        Self { in_code_block: false, code_fence: String::new(), supports_color: true }
     }
 
     pub fn with_color(mut self, supports: bool) -> Self {
@@ -200,9 +196,7 @@ impl MarkdownRenderer {
                     }
                     out.push('[');
                 }
-                '-' if (i == 0 || text[..i].ends_with('\n'))
-                    && bytes.get(i + 1) == Some(&b' ') =>
-                {
+                '-' if (i == 0 || text[..i].ends_with('\n')) && bytes.get(i + 1) == Some(&b' ') => {
                     out.push_str("  • ");
                     chars.next(); // skip space
                 }
@@ -259,10 +253,7 @@ impl Spinner {
             .spawn(move || spinner_loop(rx))
             .expect("failed to spawn spinner thread");
 
-        Self {
-            tx,
-            handle: Some(handle),
-        }
+        Self { tx, handle: Some(handle) }
     }
 
     /// Start spinning with `message` as the label.
@@ -345,11 +336,7 @@ pub struct DisplayEngine {
 
 impl DisplayEngine {
     pub fn new(quiet: bool, verbose: bool) -> Self {
-        Self {
-            quiet,
-            verbose,
-            spinner: Spinner::new(),
-        }
+        Self { quiet, verbose, spinner: Spinner::new() }
     }
 
     /// Convenience constructor for the default (non-quiet, non-verbose) engine.
@@ -368,12 +355,23 @@ impl DisplayEngine {
         let msg = if preview.is_empty() {
             format!(
                 "  {}{}⚙ {}{}Running `{}`{}...",
-                ansi::YELLOW, ansi::BOLD, ansi::RESET, ansi::DIM, name, ansi::RESET
+                ansi::YELLOW,
+                ansi::BOLD,
+                ansi::RESET,
+                ansi::DIM,
+                name,
+                ansi::RESET
             )
         } else {
             format!(
                 "  {}{}⚙ {}{}Running `{}`{} — {}",
-                ansi::YELLOW, ansi::BOLD, ansi::RESET, ansi::DIM, name, ansi::RESET, preview
+                ansi::YELLOW,
+                ansi::BOLD,
+                ansi::RESET,
+                ansi::DIM,
+                name,
+                ansi::RESET,
+                preview
             )
         };
         let _ = writeln!(io::stderr(), "\r{}", truncate_str(&msg, 120));
@@ -390,13 +388,22 @@ impl DisplayEngine {
             let _ = writeln!(
                 io::stderr(),
                 "  {}{}✓ {}`{}` done {}({:.1}s){}",
-                ansi::GREEN, ansi::BOLD, ansi::RESET, name, ansi::DIM, secs, ansi::RESET
+                ansi::GREEN,
+                ansi::BOLD,
+                ansi::RESET,
+                name,
+                ansi::DIM,
+                secs,
+                ansi::RESET
             );
         } else {
             let _ = writeln!(
                 io::stderr(),
                 "  {}{}✗ {}`{}` failed",
-                ansi::RED, ansi::BOLD, ansi::RESET, name
+                ansi::RED,
+                ansi::BOLD,
+                ansi::RESET,
+                name
             );
         }
         let _ = io::stderr().flush();
@@ -418,11 +425,7 @@ impl DisplayEngine {
         }
         match cost {
             Some(c) => {
-                let _ = writeln!(
-                    io::stderr(),
-                    "  Tokens: {input} in / {output} out  (~${:.4})",
-                    c
-                );
+                let _ = writeln!(io::stderr(), "  Tokens: {input} in / {output} out  (~${:.4})", c);
             }
             None => {
                 let _ = writeln!(io::stderr(), "  Tokens: {input} in / {output} out");
@@ -464,11 +467,7 @@ impl DisplayEngine {
             // Show each key=value pair, compact.
             let pairs: Vec<String> = args
                 .as_object()
-                .map(|m| {
-                    m.iter()
-                        .map(|(k, v)| format!("{k}={}", Self::short_val(v)))
-                        .collect()
-                })
+                .map(|m| m.iter().map(|(k, v)| format!("{k}={}", Self::short_val(v))).collect())
                 .unwrap_or_default();
             pairs.join(", ")
         } else {
@@ -550,18 +549,8 @@ pub fn print_turn_usage(input: u32, output: u32, cost: Option<f64>, model: &str)
     let sep = format!("{}·{}", ansi::DIM, ansi::RESET);
 
     let mut parts = vec![
-        format!(
-            "{}{}{} tokens in",
-            ansi::DIM,
-            format_number(u64::from(input)),
-            ansi::RESET
-        ),
-        format!(
-            "{}{}{} out",
-            ansi::DIM,
-            format_number(u64::from(output)),
-            ansi::RESET
-        ),
+        format!("{}{}{} tokens in", ansi::DIM, format_number(u64::from(input)), ansi::RESET),
+        format!("{}{}{} out", ansi::DIM, format_number(u64::from(output)), ansi::RESET),
     ];
     if !cost_part.is_empty() {
         parts.push(cost_part);
@@ -700,7 +689,12 @@ mod tests {
 
         let banner_inner = format!(
             "  {}{}Hermes{} {}{}{}",
-            ansi::BOLD, ansi::CYAN, ansi::RESET, ansi::DIM, "v0.1.0", ansi::RESET,
+            ansi::BOLD,
+            ansi::CYAN,
+            ansi::RESET,
+            ansi::DIM,
+            "v0.1.0",
+            ansi::RESET,
         );
         // "  Hermes v0.1.0" = 15 visible chars
         assert_eq!(visible_len(&banner_inner), 15);

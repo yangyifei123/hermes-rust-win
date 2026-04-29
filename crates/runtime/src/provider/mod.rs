@@ -1,8 +1,8 @@
+use crate::RuntimeError;
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
-use futures::Stream;
-use crate::RuntimeError;
 
 // =============================================================================
 // Request types
@@ -24,19 +24,49 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn user(content: &str) -> Self {
-        Self { role: "user".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
+        Self {
+            role: "user".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            cache_control: None,
+        }
     }
     pub fn assistant(content: &str) -> Self {
-        Self { role: "assistant".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
+        Self {
+            role: "assistant".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            cache_control: None,
+        }
     }
     pub fn assistant_with_tool_calls(tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".to_string(), content: None, tool_calls: Some(tool_calls), tool_call_id: None, cache_control: None }
+        Self {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+            cache_control: None,
+        }
     }
     pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
-        Self { role: "tool".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: Some(tool_call_id.to_string()), cache_control: None }
+        Self {
+            role: "tool".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.to_string()),
+            cache_control: None,
+        }
     }
     pub fn system(content: &str) -> Self {
-        Self { role: "system".to_string(), content: Some(content.to_string()), tool_calls: None, tool_call_id: None, cache_control: None }
+        Self {
+            role: "system".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            cache_control: None,
+        }
     }
 
     /// Get text content, defaulting to empty string
@@ -148,8 +178,24 @@ pub struct DeltaMessage {
 
 #[allow(clippy::type_complexity)]
 pub trait LlmProvider: Send + Sync {
-    fn chat_completion(&self, request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>>;
-    fn chat_completion_stream(&self, request: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>, RuntimeError>> + Send + '_>>;
+    fn chat_completion(
+        &self,
+        request: ChatRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, RuntimeError>> + Send + '_>>;
+    fn chat_completion_stream(
+        &self,
+        request: ChatRequest,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        Pin<Box<dyn Stream<Item = Result<StreamChunk, RuntimeError>> + Send>>,
+                        RuntimeError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    >;
     fn name(&self) -> &str;
     fn default_model(&self) -> &str;
 }
@@ -402,9 +448,11 @@ impl ProviderRegistry {
 // Provider factory
 // =============================================================================
 
-pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, base_url: Option<&str>)
-    -> Box<dyn LlmProvider>
-{
+pub fn create_provider(
+    provider_type: &hermes_common::Provider,
+    api_key: &str,
+    base_url: Option<&str>,
+) -> Box<dyn LlmProvider> {
     use hermes_common::Provider;
 
     // --- Providers with their own API format ---
@@ -441,19 +489,19 @@ pub fn create_provider(provider_type: &hermes_common::Provider, api_key: &str, b
     }
 }
 
-pub mod openai;
-pub mod openai_compatible;
 pub mod anthropic;
 pub mod caching;
 pub mod gemini;
 pub mod groq;
+pub mod openai;
+pub mod openai_compatible;
 pub mod providers;
 pub mod retry;
 
-pub use openai::OpenAiProvider;
-pub use openai_compatible::OpenAiCompatibleProvider;
 pub use anthropic::AnthropicProvider;
 pub use gemini::GeminiProvider;
+pub use openai::OpenAiProvider;
+pub use openai_compatible::OpenAiCompatibleProvider;
 
 #[cfg(test)]
 mod tests {
@@ -483,7 +531,8 @@ mod tests {
 
     #[test]
     fn test_create_provider_custom_base_url() {
-        let provider = create_provider(&Provider::OpenAI, "test-key", Some("https://custom.api.com/v1"));
+        let provider =
+            create_provider(&Provider::OpenAI, "test-key", Some("https://custom.api.com/v1"));
         // Provider name is still "openai" but base_url is custom
         assert_eq!(provider.name(), "openai");
     }
@@ -622,11 +671,7 @@ mod tests {
         // Every ProviderConfig.default_model must match Provider::default_model()
         for p in Provider::all_providers() {
             let cfg = ProviderRegistry::config(p);
-            assert_eq!(
-                cfg.default_model, p.default_model(),
-                "model mismatch for provider {:?}",
-                p
-            );
+            assert_eq!(cfg.default_model, p.default_model(), "model mismatch for provider {:?}", p);
         }
     }
 
@@ -636,7 +681,8 @@ mod tests {
         for p in Provider::all_providers() {
             let cfg = ProviderRegistry::config(p);
             assert_eq!(
-                cfg.base_url, p.default_base_url(),
+                cfg.base_url,
+                p.default_base_url(),
                 "base_url mismatch for provider {:?}",
                 p
             );

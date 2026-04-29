@@ -30,12 +30,8 @@ pub fn apply_prompt_caching(messages: &mut [ChatMessage], provider: Provider, mo
     }
 
     // Cache last 3 non-system messages
-    let non_sys: Vec<usize> = messages
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.role != "system")
-        .map(|(i, _)| i)
-        .collect();
+    let non_sys: Vec<usize> =
+        messages.iter().enumerate().filter(|(_, m)| m.role != "system").map(|(i, _)| i).collect();
 
     for idx in non_sys.iter().rev().take(3) {
         messages[*idx].cache_control = Some(marker.clone());
@@ -48,10 +44,7 @@ mod tests {
 
     #[test]
     fn test_no_caching_for_non_claude() {
-        let mut msgs = vec![
-            ChatMessage::system("You are helpful"),
-            ChatMessage::user("Hello"),
-        ];
+        let mut msgs = vec![ChatMessage::system("You are helpful"), ChatMessage::user("Hello")];
         apply_prompt_caching(&mut msgs, Provider::OpenAI, "gpt-4o");
         assert!(msgs[0].cache_control.is_none());
         assert!(msgs[1].cache_control.is_none());
